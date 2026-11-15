@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>弱智吧</title>
+<link rel="stylesheet" href="../shared/hub.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>🤪 弱智吧</h1>
+    <div class="sub">杂记金句库 · 按章节标签筛选 · 置顶优先 · 🎲 随手一句</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">全部句子</div><div class="v" id="sAll">0</div></div>
+    <div class="cell"><div class="k">置顶</div><div class="v" id="sPin">0</div></div>
+    <div class="cell"><div class="k">章节</div><div class="v" id="sTag">0</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜索句子 / 备注 / 标签…" style="flex:1;min-width:180px">
+      <button class="btn" id="btnRandom">🎲 随手一句</button>
+      <button class="btn ghost" id="btnNew">＋ 新增</button>
+      <select id="sortKey" style="max-width:150px">
+        <option value="created">按创建时间</option>
+        <option value="text">按文字排序</option>
+      </select>
+      <button class="btn gray sm" id="btnDir">正序 ↑</button>
+    </div>
+    <div id="tags" style="margin-top:12px"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><span>📚 句子库</span><span class="grow"></span><span class="hint" style="margin:0" id="cnt"></span></div>
+    <div id="list"></div>
+  </div>
+
+  <div class="footer-f">置顶先于一切，其后按所选字段排序 · 章节标签沿原站分类</div>
+</div>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var curTag = '', curQ = '';
+  function items(){ return HUB.get('quotes', {items:[],sort:{key:'created',dir:'asc'}}) || {items:[],sort:{key:'created',dir:'asc'}}; }
+  function save(o){ HUB.set('quotes', o); }
+  function tagOf(q){
+    if (q.tag) return q.tag;
+    var n = q.note || '';
+    var seg = n.split('·').pop().trim();
+    return seg || '未分类';
+  }
+  function sortItems(list, key, dir){
+    var d = (dir === 'desc') ? -1 : 1;
+    return list.slice().sort(function(a,b){
+      if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+      var va, vb;
+      if (key === 'text'){ va = a.text || ''; vb = b.text || '';
+        var c = va.localeCompare(vb, 'zh-CN'); return c * d; }
+      va = a.createdAt || ''; vb = b.createdAt || '';
+      if (va === vb) return 0;
+      return (va < vb ? -1 : 1) * d;
+    });
+  }
+
+  function render(){
+    var o = items(), list = o.items || [];
+    var keys = {};
+    list.forEach(function(q){ keys[tagOf(q)] = (keys[tagOf(q)]||0) + 1; });
+    var tagNames = Object.keys(keys).sort(function(a,b){ return a.localeCompare(b,'zh-CN'); });
+    $('sAll').textContent = list.length;
+    $('sPin').textContent = list.filter(function(q){ return q.pinned; }).length;
+    $('sTag').textContent = tagNames.length;
+
+    $('tags').innerHTML = '<span class="tag' + (curTag===''?' pin':'') + '" data-tag="" style="cursor:pointer">全部 ' + list.length + '</span>'
+      + tagNames.map(function(t){
+        return '<span class="tag' + (curTag===t?' pin':'') + '" data-tag="' + HUB.esc(t) + '" style="cursor:pointer">' + HUB.esc(t) + ' ' + keys[t] + '</span>';
+      }).join('');
+    Array.prototype.forEach.call($('tags').querySelectorAll('[data-tag]'), function(el){
+      el.onclick = function(){ curTag = el.dataset.tag; render(); };
+    });
+
+    var shown = sortItems(list, $('sortKey').value, $('btnDir').dataset.dir || 'asc')
+      .filter(function(q){
+        if (curTag && tagOf(q) !== curTag) return false;
+        if (!curQ) return true;
+        return ((q.text||'') + ' ' + (q.note||'') + ' ' + tagOf(q)).toLowerCase().indexOf(curQ) >= 0;
+      });
+    $('cnt').textContent = '显示 ' + shown.length + ' / ' + list.length + ' 条';
+
+    if (!shown.length){ $('list').innerHTML = '<div class="empty">这一格还没有句子</div>'; return; }
+    $('list').innerHTML = shown.map(function(q){
+      var t = tagOf(q);
+      return '<div class="scard' + (q.pinned?' pinned':'') + '" style="margin-top:10px">'
+        + '<div class="row1"><div class="nm">' + (q.pinned?'📌 ':'') + (q.source ? HUB.esc(q.source) : '随手记') + '</div>'
+        + '<div class="x"><a data-pin="' + q.id + '">' + (q.pinned?'取消置顶':'置顶') + '</a>'
+        + '<a data-edit="' + q.id + '">编辑</a><a class="del" data-del="' + q.id + '">删除</a></div></div>'
+        + '<div class="body">' + HUB.esc(q.text) + '</div>'
+        + (q.note ? '<div class="src">' + HUB.esc(q.note) + '</div>' : '')
+        + '<div style="margin-top:8px"><span class="tag">' + HUB.esc(t) + '</span>'
+        + (q.createdAt ? '<span class="tag">' + HUB.esc(q.createdAt) + '</span>' : '') + '</div>'
+        + '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-pin]'), function(el){
+      el.onclick = function(){
+        var o2 = items(); o2.items.forEach(function(x){ if (x.id === el.dataset.pin) x.pinned = !x.pinned; });
+        save(o2); render();
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这一句？')) return;
+        var o2 = items(); o2.items = o2.items.filter(function(x){ return x.id !== el.dataset.del; });
+        save(o2); render(); HUB.toast('已删除');
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){
+      el.onclick = function(){
+        var o2 = items(); o2.items.forEach(function(x){ if (x.id !== el.dataset.edit) return; });
+        var target = o2.items.filter(function(x){ return x.id === el.dataset.edit; })[0];
+        if (!target) return;
+        var v = prompt('修改内容', target.text);
+        if (v == null) return;
+        target.text = v; target.updatedAt = HUB.nowStamp();
+        save(o2); render(); HUB.toast('已保存');
+      };
+    });
+  }
+
+  $('btnRandom').onclick = function(){
+    var list = items().items || [];
+    if (!list.length){ HUB.toast('库里还没有句子'); return; }
+    var q = list[Math.floor(Math.random()*list.length)];
+    var m = document.createElement('div');
+    m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:520px"><h3>🎲 随手一句</h3>'
+      + '<div style="font-size:16px;line-height:1.95;margin:14px 0;white-space:pre-wrap">' + HUB.esc(q.text) + '</div>'
+      + (q.note?'<div class="hint">'+HUB.esc(q.note)+'</div>':'')
+      + '<div class="dlg-foot"><button class="btn gray" id="rm">关掉</button>'
+      + '<button class="btn" id="rp">再抽一句</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#rm').onclick = function(){ m.remove(); };
+    m.querySelector('#rp').onclick = function(){ m.remove(); $('btnRandom').click(); };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  };
+
+  $('btnNew').onclick = function(){
+    var m = document.createElement('div');
+    m.className = 'mask';
+    m.innerHTML = '<div class="dlg"><h3>新增一句</h3><p class="dlg-sub">句子、章节、备注（备注用「·」分段，最后一段会作为标签）</p>'
+      + '<div class="form-grid one">'
+      + '<div><label class="f">句子</label><textarea id="nt" rows="3"></textarea></div>'
+      + '<div><label class="f">出处 / 来源（可空）</label><input type="text" id="ns"></div>'
+      + '<div><label class="f">备注 / 章节路径（可空）</label><input type="text" id="nn" placeholder="六、文艺短句 · 幽默脑洞段子"></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="nc">取消</button><button class="btn" id="nok">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#nc').onclick = function(){ m.remove(); };
+    m.querySelector('#nok').onclick = function(){
+      var t = m.querySelector('#nt').value.trim();
+      if (!t){ HUB.toast('句子不能为空'); return; }
+      var o = items();
+      o.items.unshift({ id:'q_'+Date.now().toString(36), tag:'', note:m.querySelector('#nn').value.trim(),
+        text:t, pinned:false, source:m.querySelector('#ns').value.trim(), createdAt:HUB.nowStamp(), updatedAt:'' });
+      save(o); m.remove(); render(); HUB.toast('已加入句子库');
+    };
+  };
+
+  $('q').oninput = function(){ curQ = this.value.trim().toLowerCase(); render(); };
+  $('sortKey').onchange = function(){
+    var o = items(); o.sort = { key:this.value, dir:$('btnDir').dataset.dir||'asc' }; save(o); render();
+  };
+  $('btnDir').dataset.dir = (items().sort && items().sort.dir) || 'asc';
+  $('btnDir').textContent = $('btnDir').dataset.dir === 'desc' ? '倒序 ↓' : '正序 ↑';
+  $('btnDir').onclick = function(){
+    this.dataset.dir = this.dataset.dir === 'desc' ? 'asc' : 'desc';
+    this.textContent = this.dataset.dir === 'desc' ? '倒序 ↓' : '正序 ↑';
+    var o = items(); o.sort = { key:$('sortKey').value, dir:this.dataset.dir }; save(o); render();
+  };
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+})();
+</script>
+</body>
+</html>
