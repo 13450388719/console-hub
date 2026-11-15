@@ -97,7 +97,10 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#1a6ee0;}
 /* ---------- 卡片列表 ---------- */
 .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;}
 .scard{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 2px 10px rgba(26,60,110,.07);border-top:3px solid #6f8fc4;position:relative;}
-.scard.pinned{border-top-color:#e0a828;background:#fffdf7;}
+.scard.pinned{border-top-color:#ec7aa8;background:#fde8f0;box-shadow:0 2px 10px rgba(232,122,168,.18);}
+.scard.pinned .nm{color:#a8326a;}
+.scard.pinned .src,.scard.pinned .src span{color:#a8567f;}
+.scard.pinned .x a{color:#c2185b;}
 .scard.hotmem{border-top-color:#8e1b1b;background:#c62828;box-shadow:0 3px 14px rgba(140,20,20,.26);}
 .scard.hotmem .nm,.scard.hotmem .src,.scard.hotmem .src span,.scard.hotmem .x a{color:#fff;}
 .scard.hotmem .x a.del{color:#ffe3df;}
