@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>政策 · 板块资讯台</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+.chain{background:#fff;border-radius:12px;padding:14px 16px;margin-top:14px;box-shadow:0 2px 10px rgba(26,60,110,.07)}
+.chain .t{font-size:13.5px;font-weight:700;color:#1a3c6e}
+.chain .steps{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chain .s{font-size:12px;padding:5px 10px;border-radius:16px;background:#f2f6fc;color:#3c5171;cursor:pointer;border:1px solid #e2eaf5}
+.chain .s:hover{background:#e8f0fd;border-color:#c3d8f6}
+.chain .d{font-size:12px;color:#8a94a6;line-height:1.85;margin-top:9px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.tb{font-size:13px;padding:7px 13px;border-radius:9px;border:1px solid #d5dbe5;background:#fff;color:#3c5171;cursor:pointer;font-family:inherit}
+.tb.on{background:#1a6ee0;border-color:#1a6ee0;color:#fff;font-weight:600}
+.pane{display:none} .pane.on{display:block}
+.nItem{background:#fff;border-radius:11px;padding:12px 14px;margin-top:10px;border-left:3px solid #6f8fc4}
+.nItem h4{font-size:14px;line-height:1.6;color:#1a3c6e}
+.nItem h4 a{color:inherit;text-decoration:none}
+.nItem h4 a:hover{text-decoration:underline}
+.nItem .m{font-size:12px;color:#93a1b4;margin-top:5px}
+.nItem .s{font-size:13px;color:#4a5c73;line-height:1.8;margin-top:6px}
+.nItem .ops{margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.nItem .ops a{font-size:12px;color:#1a6ee0;cursor:pointer}
+.cols{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px}
+.col{background:#f9fbff;border:1px solid #e6ecf5;border-radius:11px;padding:12px}
+.col h5{font-size:13px;color:#1a3c6e;margin-bottom:4px}
+.col .n{font-size:11.5px;color:#93a1b4}
+.col .it{background:#fff;border-radius:8px;padding:9px 10px;margin-top:8px;border:1px solid #eceff4}
+.col .it .tt{font-size:12.5px;line-height:1.6;color:#2c3e50}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>📰 政策 · 板块资讯台</h1>
+    <div class="sub">按「十五五 → 落地 → 景气 → 估值/拥挤 → 参与 → 追踪」组织 · 感兴趣一键加备忘</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+    <button class="btn-mini" id="btnRules">📖 规则与边界</button>
+  </div>
+
+  <div class="chain">
+    <div class="t">跟着国家的钱走 · 国策红利决策链</div>
+    <div class="steps">
+      <span class="s" data-go="p1">① 政策拆解</span>
+      <span class="s" data-go="p2">② 落地档位</span>
+      <span class="s" data-go="p3">③ 板块景气</span>
+      <span class="s" data-go="p4">④ 估值 · 拥挤</span>
+      <span class="s" data-go="p5">⑤ 参与 · 追踪</span>
+    </div>
+    <div class="d">十五五规划是「国家的钱往哪投」的指挥棒。被点名的行业通常有补贴 / 融资 / 产业链确定性 / 上市扶持四重加持，
+      但专项规划一份份发、估值天天在变，所以要看：政策有没有落地 → 板块景气是否加快 → 现在贵不贵、拥不拥挤 → 我该怎么参与 → 持续追踪更新。
+      本页只做信息整理，不构成投资建议。</div>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">资讯条数</div><div class="v" id="sN">0</div></div>
+    <div class="cell"><div class="k">A 档（已落地）</div><div class="v" id="sA">0</div></div>
+    <div class="cell"><div class="k">收藏</div><div class="v" id="sFav">0</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tb on" data-tab="p1">① 政策拆解</button>
+    <button class="tb" data-tab="p2">② 落地档位</button>
+    <button class="tb" data-tab="p3">③ 板块景气</button>
+    <button class="tb" data-tab="p4">④ 估值 · 拥挤</button>
+    <button class="tb" data-tab="p5">⑤ 参与 · 追踪</button>
+  </div>
+
+  <!-- ===== p1 ===== -->
+  <div class="pane on" id="p1">
+    <div class="panel">
+      <div class="toolbar">
+        <input type="search" id="kw" placeholder="搜索标题 / 摘要 / 关键词…" style="flex:1;min-width:170px">
+        <select id="srcSel" style="max-width:170px">
+          <option value="">全部来源</option>
+          <option value="新浪财经">新浪财经</option>
+          <option value="东方财富">东方财富</option>
+        </select>
+        <label style="font-size:12.5px;color:#4a5c73;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="onlyOfficial"> 只看官方一手</label>
+        <label style="font-size:12.5px;color:#4a5c73;display:inline-flex;align-items:center;gap:5px"><input type="checkbox" id="onlyFocus"> 只看相关主线</label>
+      </div>
+      <div class="hint" id="meta1"></div>
+    </div>
+    <div id="p1body"></div>
+  </div>
+
+  <!-- ===== p2 ===== -->
+  <div class="pane" id="p2">
+    <div class="panel">
+      <div class="panel-title">落地档位（规则判定，可手动改档）</div>
+      <div class="hint">A = 官方口径 + 有量化指标（已落地：出了文件，也给了钱）；B = 只满足其一（推进中）；C = 都不满足（仅规划·待核）。每列最多 12 条。</div>
+      <div class="cols" id="cols"></div>
+    </div>
+  </div>
+
+  <!-- ===== p3 ===== -->
+  <div class="pane" id="p3">
+    <div class="panel">
+      <div class="panel-title">板块景气 · 按 6 条主线分组</div>
+      <div class="hint">点主线名可把「政策拆解」聚焦到该主线。「官方月度落地数据」原站显示「暂无数据（未提供数据源，不作推测）」，这里照原样保留。</div>
+      <div id="sectors"></div>
+    </div>
+  </div>
+
+  <!-- ===== p4 ===== -->
+  <div class="pane" id="p4">
+    <div class="panel">
+      <div class="panel-title">估值 · 拥挤</div>
+      <div class="hint">估值分位＝今天价格 vs 过去 5 年；拥挤度＝指数成交额 / 中证全指成交额。样本不足一律「暂无数据」，不做 0 值兜底。</div>
+      <div class="table-wrap"><table class="data" id="tblVal">
+        <colgroup><col style="width:22%"><col style="width:11%"><col style="width:11%"><col style="width:14%"><col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:10%"></colgroup>
+        <thead><tr><th>指数</th><th>PE</th><th>PE 分位</th><th>PB / 分位</th><th>今日占比</th><th>近 20 日均值</th><th>倍数</th><th>拥挤度</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ===== p5 ===== -->
+  <div class="pane" id="p5">
+    <div class="panel">
+      <div class="panel-title">参与设置</div>
+      <div class="form-grid">
+        <div style="grid-column:1/-1"><label class="f">关注主线（可多选）</label><div class="checkline" id="focusBox"></div></div>
+        <div><label class="f">风险档</label><select id="riskSel"></select></div>
+        <div><label class="f">有证券账户（可买场内 ETF）</label><select id="acctSel"><option value="yes">有</option><option value="no">没有</option></select></div>
+      </div>
+      <div class="dlg-foot" style="justify-content:flex-start"><button class="btn" id="btnSaveSet">保存设置</button></div>
+      <div class="hint" id="setHint"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">⭐ 我的收藏</div>
+      <div id="favList"></div>
+    </div>
+  </div>
+
+  <div class="footer-f">数据均带来源与日期 · 取不到一律「暂无数据」，不做 0 值兜底 · 本页不构成投资建议</div>
+</div>
+
+<a class="pill" href="memo.html">🔔 备忘提醒</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+
+  var OFFICIAL_SOURCES = ['新华社','人民日报','央视','中国政府网','国务院','发改委','工信部','财政部','央行','人民银行','证监会','商务部','外交部','住建部','国家能源局','市场监管总局','国资委','税务总局','海关总署','金融监管','国家统计局','国家药监局','求是','经济日报'];
+  var MEDIA_RE = /(东方财富|新浪财经|市场资讯|环球市场播报|证券时报|上海证券报|中国证券报|财联社|第一财经|每日经济新闻)/;
+  var POLICY_TERMS = [['超常规举措','拉满'],['决定性突破','拉满'],['全链条推动','拉满'],['加强攻关','高'],['纵深推进','高'],['培育壮大','中'],['积极稳妥','中'],['推动创新发展','常规']];
+  var OFFICIAL_KW = ['国务院','发改委','工信部','财政部','央行','证监会','商务部','住房','能源局','印发','发布','部署','审议通过','正式','批复','公告','通知','条例','规划'];
+  var QUANT_RE = /(\d+(\.\d+)?\s*(%|％|亿元|万亿|万元|亿美元|个百分点|GW|MW|亿|万|家|项|倍|元\/|吨))/;
+
+  var LINES = [
+    { id:'policy', name:'政策与规划', kw:['规划','政策','意见','方案','部署','国务院','发改委','十五五'] },
+    { id:'tech', name:'科技与新质生产力', kw:['人工智能','AI','算力','芯片','半导体','软件','机器人','通信','数据'] },
+    { id:'energy', name:'能源与绿色转型', kw:['新能源','光伏','风电','储能','电力','煤炭','石油','天然气','电网'] },
+    { id:'consume', name:'消费与内需', kw:['消费','零售','白酒','食品','汽车','家电','旅游','电商'] },
+    { id:'finance', name:'资金与市场', kw:['利率','降息','央行','货币','贷款','债','基金','股市','成交额'] },
+    { id:'health', name:'医药与民生', kw:['医药','医疗','创新药','疫苗','医保','养老','教育','生育'] }
+  ];
+  var RISK_NAME = { zero:'保守（只接受固收）', steady:'稳健', balanced:'平衡', growth:'进取' };
+
+  function news(){ return HUB.get('news', {items:[], updatedAt:'', sources:[], count:0, date:''}) || {items:[]}; }
+  function items(){ return (news().items || []).slice().sort(function(a,b){ return (b.ts||0)-(a.ts||0); }); }
+  function saved(){ return HUB.get('news_saved', []) || []; }
+  function cols(){ return HUB.get('news_cols', {}) || {}; }
+  function settings(){
+    var s = HUB.get('news_settings', null) || { focus:LINES.map(function(l){return l.id;}), extraKw:'', risk:'steady', account:'yes' };
+    return s;
+  }
+
+  function sourceGrade(it){
+    var s = String(it.source || it.origin || '');
+    for (var i=0;i<OFFICIAL_SOURCES.length;i++){ if (s.indexOf(OFFICIAL_SOURCES[i]) >= 0) return '官方一手'; }
+    if (MEDIA_RE.test(s)) return '财经媒体';
+    return '其他来源';
+  }
+  function policyTerm(it){
+    var txt = (it.title||'') + ' ' + (it.summary||'');
+    for (var i=0;i<POLICY_TERMS.length;i++){
+      if (txt.indexOf(POLICY_TERMS[i][0]) >= 0) return { kw:POLICY_TERMS[i][0], level:POLICY_TERMS[i][1] };
+    }
+    return null;
+  }
+  function hasOfficial(it){
+    var t = (it.title||'') + ' ' + (it.summary||'');
+    for (var i=0;i<OFFICIAL_KW.length;i++){ if (t.indexOf(OFFICIAL_KW[i]) >= 0) return true; }
+    return false;
+  }
+  function hasQuant(it){ return QUANT_RE.test((it.title||'') + ' ' + (it.summary||'')); }
+  function columnOf(it){
+    var c = cols(); if (c[it.id]) return c[it.id];
+    var o = hasOfficial(it), q = hasQuant(it);
+    if (o && q) return 'A';
+    if (o || q) return 'B';
+    return 'C';
+  }
+  function tagsOf(it){
+    var txt = ((it.title||'') + ' ' + (it.summary||'') + ' ' + (settings().extraKw||'')).toLowerCase();
+    return LINES.filter(function(l){
+      return l.kw.some(function(k){ return txt.indexOf(String(k).toLowerCase()) >= 0; });
+    });
+  }
+  function fmtTime(ts){
+    if (!ts) return '时间暂无数据';
+    var d = new Date(ts);
+    return (d.getMonth()+1) + '月' + d.getDate() + '日 ' + HUB.pad2(d.getHours()) + ':' + HUB.pad2(d.getMinutes());
+  }
+  function fmtDay(ts){
+    if (!ts) return '—';
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + HUB.pad2(d.getMonth()+1) + '-' + HUB.pad2(d.getDate());
+  }
+  function pctOf(v){
+    var x = Number(v); if (!isFinite(x)) return null;
+    return (x <= 1 ? x*100 : x).toFixed(1) + '%';
+  }
+  function valLabel(pe, pb){
+    if (pe == null || pb == null) return { t:'暂无数据', cls:'' };
+    var p = pe <= 1 ? pe*100 : pe, b = pb <= 1 ? pb*100 : pb;
+    if (p >= 90 && b >= 90) return { t:'双高预警', cls:'hot' };
+    if (p >= 80 && b >= 80) return { t:'高度反映', cls:'pin' };
+    if (p < 40 && b < 40) return { t:'利好反应不足', cls:'ok' };
+    if (p >= 80 || b >= 80) return { t:'单项高位', cls:'pin' };
+    return { t:'部分反映', cls:'' };
+  }
+
+  /* ---------------- 面板① ---------------- */
+  function renderP1(){
+    var list = items(), st = settings();
+    var onlyOfficial = $('onlyOfficial').checked, onlyFocus = $('onlyFocus').checked;
+    var src = $('srcSel').value, kw = ($('kw').value||'').trim().toLowerCase();
+
+    var relevant = list.filter(function(it){ return tagsOf(it).length > 0; });
+    var official = list.filter(function(it){ return sourceGrade(it) === '官方一手'; });
+
+    var shown = list.filter(function(it){
+      if (src && (it.origin||'') !== src) return false;
+      if (onlyOfficial && sourceGrade(it) !== '官方一手') return false;
+      if (onlyFocus && tagsOf(it).length === 0) return false;
+      if (kw && (((it.title||'') + ' ' + (it.summary||'')).toLowerCase().indexOf(kw) < 0)) return false;
+      return true;
+    }).slice(0, 60);
+
+    $('meta1').textContent = '来源：' + (news().sources || []).join(' / ') + ' · 抓取 ' + (news().updatedAt || '—')
+      + ' · 当前显示 ' + shown.length + ' 条 / 命中主线 ' + relevant.length + ' · 官方一手 ' + official.length;
+
+    if (!shown.length){
+      $('p1body').innerHTML = '<div class="panel"><div class="empty">没有符合条件的资讯。原站每日 02:59 由服务端抓取，这里是 2026-11-14 的真实镜像。</div></div>';
+      return;
+    }
+    $('p1body').innerHTML = '<div class="panel">' + shown.map(function(it){
+      var grade = sourceGrade(it), term = policyTerm(it), col = columnOf(it);
+      var lines = tagsOf(it).map(function(l){ return '<span class="tag">' + l.name + '</span>'; }).join('');
+      return '<div class="nItem">'
+        + '<h4>' + (it.url ? '<a href="' + HUB.esc(it.url) + '" target="_blank" rel="noopener">' + HUB.esc(it.title) + '</a>' : HUB.esc(it.title)) + '</h4>'
+        + '<div class="m">' + HUB.esc(it.source || '来源暂无数据') + ' · ' + fmtTime(it.ts)
+        + ' <span class="tag ' + (grade === '官方一手' ? 'ok' : '') + '">' + grade + '</span>'
+        + (term ? '<span class="tag hot">' + term.kw + ' · ' + term.level + '</span>' : '')
+        + '<span class="tag">' + col + ' 档</span>' + lines + '</div>'
+        + '<div class="s">' + HUB.esc(it.summary || '') + '</div>'
+        + '<div class="ops"><a data-memo="' + HUB.esc(it.id) + '">＋ 备忘</a>'
+        + '<a data-fav="' + HUB.esc(it.id) + '">☆ 收藏</a>'
+        + (it.url ? '<a href="' + HUB.esc(it.url) + '" target="_blank" rel="noopener">原文 ↗</a>' : '') + '</div>'
+        + '</div>';
+    }).join('') + '</div>';
+
+    Array.prototype.forEach.call($('p1body').querySelectorAll('[data-memo]'), function(el){
+      el.onclick = function(){ addMemo(el.dataset.memo); };
+    });
+    Array.prototype.forEach.call($('p1body').querySelectorAll('[data-fav]'), function(el){
+      el.onclick = function(){ toggleSave(el.dataset.fav, el); };
+    });
+  }
+
+  function findItem(id){ return items().filter(function(it){ return it.id === id; })[0]; }
+
+  function addMemo(id){
+    var it = findItem(id); if (!it) return;
+    var memos = HUB.get('memos', []) || [];
+    var exists = memos.some(function(m){ return (m.url && m.url === it.url) || (m.text||'').indexOf(it.title) >= 0; });
+    if (exists){ HUB.toast('备忘里已经有这条了'); return; }
+    memos.unshift({ id:'g'+Date.now(), text:'【资讯】' + it.title + ' ｜ 来源：' + (it.source||'暂无数据')
+      + ' ｜ ' + fmtTime(it.ts) + ' ｜ 原文：' + (it.url||'暂无链接'),
+      time:'', done:false, created:Date.now(), from:'news', url:it.url||'', important:false });
+    HUB.set('memos', memos);
+    toggleSave(id, null, true);
+    HUB.toast('已加入备忘提醒');
+  }
+
+  function toggleSave(id, el, onlyMark){
+    var it = findItem(id); if (!it) return;
+    var s = saved();
+    var idx = -1; s.forEach(function(x,i){ if (x.id === id) idx = i; });
+    if (idx >= 0 && !onlyMark){
+      s.splice(idx, 1); HUB.set('news_saved', s); renderFav(); renderStats(); HUB.toast('已取消收藏'); return;
+    }
+    if (idx < 0){
+      s.unshift({ id:it.id, title:it.title, url:it.url||'', source:it.source||'', ts:it.ts||0,
+        summary:it.summary||'', savedAt:Date.now(), memoAdded: !!onlyMark });
+      HUB.set('news_saved', s); renderFav(); renderStats(); HUB.toast('已收藏');
+    } else if (onlyMark){
+      s[idx].memoAdded = true; HUB.set('news_saved', s); renderFav();
+    }
+  }
+
+  /* ---------------- 面板② ---------------- */
+  function renderP2(){
+    var list = items();
+    var buckets = { A:[], B:[], C:[] };
+    list.forEach(function(it){ buckets[columnOf(it)].push(it); });
+    var COLS = [['A','A 已落地 · 文件+钱'],['B','B 推进中'],['C','C 仅规划 · 待核']];
+    $('cols').innerHTML = COLS.map(function(c){
+      var arr = buckets[c[0]].slice(0, 12);
+      return '<div class="col"><h5>' + c[1] + '</h5><div class="n">' + buckets[c[0]].length + ' 条</div>'
+        + arr.map(function(it){
+          var term = policyTerm(it);
+          return '<div class="it"><div class="tt">' + HUB.esc(it.title) + '</div>'
+            + '<div style="font-size:11px;color:#93a1b4;margin-top:4px">' + sourceGrade(it)
+            + (term ? ' · ' + term.kw + '/' + term.level : '') + '</div>'
+            + '<div style="margin-top:6px"><select data-col="' + HUB.esc(it.id) + '" style="font-size:11.5px;padding:3px 6px">'
+            + '<option value="A"' + (c[0]==='A'?' selected':'') + '>A</option>'
+            + '<option value="B"' + (c[0]==='B'?' selected':'') + '>B</option>'
+            + '<option value="C"' + (c[0]==='C'?' selected':'') + '>C</option></select></div></div>';
+        }).join('') + '</div>';
+    }).join('');
+    Array.prototype.forEach.call($('cols').querySelectorAll('[data-col]'), function(el){
+      el.onchange = function(){
+        var c = cols(); c[el.dataset.col] = el.value;
+        HUB.set('news_cols', c); renderP2(); renderP1(); HUB.toast('已归入 ' + el.value + ' 栏');
+      };
+    });
+  }
+
+  /* ---------------- 面板③ ---------------- */
+  function renderP3(){
+    var list = items();
+    var groups = {};
+    LINES.forEach(function(l){ groups[l.id] = []; });
+    var miss = 0;
+    list.forEach(function(it){
+      var t = tagsOf(it), matched = false;
+      t.forEach(function(l){ groups[l.id].push(it); matched = true; });
+      if (!matched) miss++;
+    });
+    $('sectors').innerHTML = LINES.map(function(l){
+      var arr = groups[l.id];
+      var official = arr.filter(function(it){ return sourceGrade(it) === '官方一手'; }).length;
+      var latest = arr.length ? Math.max.apply(null, arr.map(function(it){ return it.ts||0; })) : 0;
+      return '<div class="scard" style="margin-top:12px">'
+        + '<div class="row1"><div class="nm">' + l.name + '</div>'
+        + '<div class="x"><a data-focus="' + l.id + '">聚焦这一条主线</a></div></div>'
+        + '<div class="src">' + arr.length + ' 条 · 官方一手 ' + official + ' · 最新 ' + (latest ? fmtTime(latest) : '暂无数据') + '</div>'
+        + '<div class="src" style="color:#a8b3c2">官方月度落地数据：暂无数据（未提供数据源，不作推测）</div>'
+        + (arr.length ? '<div class="body" style="font-size:12.5px;color:#4a5c73">' + arr.slice(0,4).map(function(it){ return '· ' + HUB.esc(it.title); }).join('<br>') + '</div>' : '')
+        + '</div>';
+    }).join('') + '<div class="hint">未命中任何主线的资讯 ' + miss + ' 条（如实列出，不硬塞归类）。</div>';
+
+    Array.prototype.forEach.call($('sectors').querySelectorAll('[data-focus]'), function(el){
+      el.onclick = function(){
+        var l = LINES.filter(function(x){ return x.id === el.dataset.focus; })[0];
+        $('kw').value = l.kw[0];
+        showTab('p1'); renderP1();
+      };
+    });
+  }
+
+  /* ---------------- 面板④ ---------------- */
+  function renderP4(){
+    var f = HUB.get('funds', {quotes:{}}) || {quotes:{}};
+    var crowd = HUB.get('news_crowd', {}) || {};
+    var days = Object.keys(crowd).sort();
+    var todayKey = days[days.length-1];
+    var tb = $('tblVal').querySelector('tbody');
+    var rows = [];
+    var seen = {};
+    (HUB.get('funds', {list:[]}).list || []).forEach(function(x){
+      if (!x.indexCode) return;
+      if (seen[x.indexCode]) return; seen[x.indexCode] = 1;
+      rows.push({ code:x.indexCode, name:x.trackName || x.name });
+    });
+    Object.keys(crowd[todayKey] || {}).forEach(function(code){
+      if (seen[code]) return; seen[code] = 1;
+      var nm = (HUB.get('funds', {list:[]}).list || []).filter(function(x){ return x.indexCode === code; })[0];
+      rows.push({ code:code, name: nm ? (nm.trackName || nm.name) : code });
+    });
+    if (!rows.length){ tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#a8b3c2">暂无数据</td></tr>'; return; }
+
+    tb.innerHTML = rows.map(function(r){
+      var q = f.quotes && f.quotes[r.code] ? f.quotes[r.code] : null;
+      var pe = q && q.pe != null ? q.pe : null, pb = q && q.pb != null ? q.pb : null;
+      var pePct = q && q.pePct != null ? q.pePct : null, pbPct = q && q.pbPct != null ? q.pbPct : null;
+      var lab = valLabel(pePct, pbPct);
+      var cur = (crowd[todayKey] || {})[r.code];
+      var prevDays = days.slice(0, -1).filter(function(d){ return crowd[d] && crowd[d][r.code] != null; });
+      var avg = prevDays.length ? prevDays.reduce(function(s,d){ return s + crowd[d][r.code]; }, 0)/prevDays.length : null;
+      var ratio = (cur != null && avg) ? cur/avg : null;
+      var crowdTag = ratio == null ? '<span class="nd">暂无数据</span>'
+        : ('<span class="tag ' + (ratio>2?'hot':(ratio>1.3?'pin':'ok')) + '">' + (ratio>2?'拥挤预警':(ratio>1.3?'偏拥挤':'正常')) + '</span>');
+      return '<tr><td><b>' + HUB.esc(r.name) + '</b><br><span style="font-size:11px;color:#93a1b4">' + HUB.esc(r.code) + '</span></td>'
+        + '<td class="num">' + (pe != null ? pe : '<span class="nd">暂无数据</span>') + '</td>'
+        + '<td class="num">' + (pePct != null ? pctOf(pePct) : '<span class="nd">暂无数据</span>') + '</td>'
+        + '<td class="num">' + (pb != null ? pb + ' / ' + (pbPct != null ? pctOf(pbPct) : '—') : '<span class="nd">暂无数据</span>') + '</td>'
+        + '<td class="num">' + (cur != null ? (cur*100).toFixed(2) + '%' : '<span class="nd">暂无数据</span>') + '</td>'
+        + '<td class="num">' + (avg != null ? (avg*100).toFixed(2) + '%' : '<span class="nd">暂无数据</span>') + '</td>'
+        + '<td class="num">' + (ratio != null ? ratio.toFixed(2) + '×' : '—') + '</td>'
+        + '<td>' + crowdTag + '<div style="font-size:11px;margin-top:3px" class="tag ' + (lab.cls||'') + '">' + lab.t + '</div></td></tr>';
+    }).join('');
+  }
+
+  /* ---------------- 面板⑤ ---------------- */
+  function renderP5(){
+    var st = settings();
+    $('focusBox').innerHTML = LINES.map(function(l){
+      return '<label><input type="checkbox" data-line="' + l.id + '"' + (st.focus.indexOf(l.id)>=0?' checked':'') + '> ' + l.name + '</label>';
+    }).join('');
+    $('riskSel').innerHTML = Object.keys(RISK_NAME).map(function(k){
+      return '<option value="' + k + '"' + (st.risk===k?' selected':'') + '>' + RISK_NAME[k] + '</option>';
+    }).join('');
+    $('acctSel').value = st.account || 'yes';
+    $('setHint').textContent = '设置只存在本机（不同步到别的设备），与原站一致。';
+    renderFav();
+  }
+
+  function renderFav(){
+    var s = saved();
+    if (!s.length){ $('favList').innerHTML = '<div class="empty">还没有收藏。在「政策拆解」里点 ☆ 收藏 就会出现在这里。</div>'; return; }
+    $('favList').innerHTML = s.map(function(it){
+      return '<div class="nItem"><h4>' + HUB.esc(it.title) + '</h4>'
+        + '<div class="m">' + HUB.esc(it.source||'来源暂无数据') + ' · ' + fmtDay(it.ts) + (it.memoAdded?' · 已加备忘':'') + '</div>'
+        + '<div class="ops"><a data-favdel="' + HUB.esc(it.id) + '">移除</a>'
+        + '<a data-favmemo="' + HUB.esc(it.id) + '">＋ 备忘</a>'
+        + (it.url ? '<a href="' + HUB.esc(it.url) + '" target="_blank" rel="noopener">原文 ↗</a>' : '') + '</div></div>';
+    }).join('');
+    Array.prototype.forEach.call($('favList').querySelectorAll('[data-favdel]'), function(el){
+      el.onclick = function(){ toggleSave(el.dataset.favdel, null); };
+    });
+    Array.prototype.forEach.call($('favList').querySelectorAll('[data-favmemo]'), function(el){
+      el.onclick = function(){ addMemo(el.dataset.favmemo); };
+    });
+  }
+
+  function renderStats(){
+    var list = items();
+    $('sN').textContent = list.length;
+    $('sA').textContent = list.filter(function(it){ return columnOf(it) === 'A'; }).length;
+    $('sFav').textContent = saved().length;
+  }
+
+  /* ---------------- 规则弹框 ---------------- */
+  $('btnRules').onclick = function(){
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:680px"><h3>📖 规则与边界</h3>'
+      + '<div style="font-size:13px;line-height:1.95;color:#3c5171;margin-top:10px">'
+      + '<b>① 数据来源</b>：新浪财经滚动 + 东方财富快讯，原站由服务端定时抓取；本页是 2026-11-14 的真实镜像。<br>'
+      + '<b>② 不编造</b>：取不到的数据一律写「暂无数据」，不做 0 值兜底、不做估算。<br>'
+      + '<b>③ 决策链</b>：政策拆解 → 落地档位 → 板块景气 → 估值/拥挤 → 参与 → 追踪。<br>'
+      + '<b>④ 官方措辞分级</b>：' + POLICY_TERMS.map(function(t){ return t[0]+'='+t[1]; }).join(' / ') + '。<br>'
+      + '<b>⑤ A/B/C 档</b>：A = 官方口径 + 量化；B = 其一；C = 都无。可手动改档。<br>'
+      + '<b>⑥ 已反映程度</b>：PE/PB 均 ≥90 双高预警；均 ≥80 高度反映；均 &lt;40 利好反应不足。<br>'
+      + '<b>⑦ 拥挤度</b>：倍数 &gt;2 拥挤预警，&gt;1.3 偏拥挤；以指数成交额代理板块成交额，与券商口径不完全等价。<br>'
+      + '<b>⑧ 参与方式</b>：按风险档给工具类型，纯信息整理，不构成投资建议。<br>'
+      + '<b>⑨ 结构性缺失</b>：官方月度落地数据原站也无数据源，如实显示「暂无数据」。<br>'
+      + '<b>⑩ 联网边界</b>：静态页直连 JSONP 会被浏览器拦截，原站靠服务端；本页不假装能抓取。'
+      + '</div><div class="dlg-foot"><button class="btn" id="rOk">知道了</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#rOk').onclick = function(){ m.remove(); };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  };
+
+  $('btnSaveSet').onclick = function(){
+    var focus = [];
+    Array.prototype.forEach.call($('focusBox').querySelectorAll('[data-line]'), function(el){ if (el.checked) focus.push(el.dataset.line); });
+    HUB.set('news_settings', { focus:focus, extraKw:'', risk:$('riskSel').value, account:$('acctSel').value, sectorIndex:{} });
+    HUB.toast('设置已保存（只存在本机）');
+    renderP1(); renderP2(); renderP3();
+  };
+
+  var curTab = 'p1';
+  function showTab(id){
+    curTab = id;
+    Array.prototype.forEach.call(document.querySelectorAll('.tb'), function(b){ b.classList.toggle('on', b.dataset.tab === id); });
+    Array.prototype.forEach.call(document.querySelectorAll('.pane'), function(p){ p.classList.toggle('on', p.id === id); });
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.tb'), function(b){ b.onclick = function(){ showTab(b.dataset.tab); }; });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-go]'), function(s){ s.onclick = function(){ showTab(s.dataset.go); }; });
+
+  $('kw').oninput = renderP1;
+  $('srcSel').onchange = renderP1;
+  $('onlyOfficial').onchange = renderP1;
+  $('onlyFocus').onchange = renderP1;
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ renderP1(); renderP2(); renderP3(); renderP4(); renderFav(); renderStats(); });
+
+  renderP1(); renderP2(); renderP3(); renderP4(); renderP5(); renderStats();
+})();
+</script>
+</body>
+</html>
