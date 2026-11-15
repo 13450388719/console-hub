@@ -21,13 +21,15 @@ body{
 .hd{position:relative;text-align:center;padding:22px 0 4px;}
 .hd h1{font-size:23px;color:#1a3c6e;letter-spacing:1px;font-weight:700;}
 .hd .sub{font-size:13px;color:#8a94a6;margin-top:7px;line-height:1.6;}
+.backbar{position:absolute;left:0;top:18px;display:flex;flex-wrap:wrap;gap:8px;}
 .back{
-  position:absolute;left:0;top:18px;display:inline-flex;align-items:center;gap:4px;
+  position:static;display:inline-flex;align-items:center;gap:4px;
   font-size:13px;color:#1a3c6e;text-decoration:none;background:#fff;
   border:1px solid #d5dbe5;border-radius:8px;padding:6px 11px;
   box-shadow:0 1px 4px rgba(26,60,110,.06);
 }
 .back:hover{background:#f6f9ff;border-color:#b9cbe6;}
+.back.plus{color:#3c5171;background:#f8fbff;}
 
 /* ---------- 同步徽章 ---------- */
 .syncbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;margin:12px 0 4px;}
@@ -149,7 +151,7 @@ footer.f{text-align:center;margin-top:26px;font-size:12px;color:#a5aebd;line-hei
   .wrap{padding:14px 12px 70px;}
   .hd{padding-top:46px;}
   .hd h1{font-size:20px;}
-  .back{position:static;display:inline-flex;margin-bottom:10px;}
+  .backbar{position:static;margin-bottom:10px;}
   .form-grid,.form-grid.three{grid-template-columns:1fr;}
   .stat{grid-template-columns:1fr 1fr;}
   .stat .cell:last-child{grid-column:1 / -1;}
