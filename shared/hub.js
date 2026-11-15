@@ -372,7 +372,27 @@ window.HUB = (function () {
     if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(bindSyncBadges, 0);
   }
 
+  /* 底部备用导航：把顶部按钮复制一份到左下角，顶部被遮挡时也能返回 */
+  function addFootNav(){
+    try {
+      if (document.querySelector('.footnav')) return;
+      var bar = document.querySelector('.backbar');
+      if (!bar) return;
+      var links = bar.querySelectorAll('a');
+      for (var i = 0; i < links.length; i++) {
+        if (links[i].hasAttribute('data-nav')) return; // 单文件包内由桥接脚本接管
+      }
+      var box = document.createElement('div');
+      box.className = 'footnav';
+      box.innerHTML = bar.innerHTML;
+      document.body.appendChild(box);
+    } catch (e) {}
+  }
+
   boot();
+
+  window.addEventListener('load', addFootNav);
+  if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(addFootNav, 0);
 
   return {
     KEYS: KEYS, NAME: NAME,
