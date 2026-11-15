@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>截图取字 · 翻译 · 朗读</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+#ov{position:fixed;inset:0;z-index:12000;background:#0b1220;display:none;flex-direction:column;align-items:center;justify-content:center}
+#ov.on{display:flex}
+#cvWrap{position:relative;flex:1;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#cv{max-width:100%;max-height:100%}
+#shade{position:absolute;inset:0;background:rgba(0,0,0,.55);pointer-events:none}
+#box{position:absolute;border:2px solid #1a6ee0;box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:crosshair;display:none}
+#tools{display:flex;gap:10px;padding:12px;flex-wrap:wrap;justify-content:center;background:rgba(0,0,0,.35);width:100%}
+#size{position:absolute;font-size:12px;color:#fff;background:rgba(26,110,224,.9);padding:2px 7px;border-radius:5px;display:none}
+img#shotImg{max-width:100%;border-radius:9px;border:1px solid #eceff4}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>📸 截图取字 · 翻译 · 朗读</h1>
+    <div class="sub">像微信那样框选画面：Alt+A 启动（需先点一下本页让页面拿到焦点），框选后可提取文字、翻译、朗读。<br>
+      截图取自你授权的窗口 / 标签页，文字识别在本机完成，只有翻译会请求公共翻译接口。</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <button class="btn" id="btnShot">📸 开始截图 Alt+A</button>
+      <button class="btn ghost" id="btnImport">📁 导入图片</button>
+      <button class="btn gray" id="btnClear">🧹 清空结果</button>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+    <div class="hint" id="hint">按 Alt+A 或点「开始截图」，浏览器会弹出共享窗口列表，选你要截的窗口即可。手机浏览器不支持截屏，可改用「导入图片」。</div>
+    <div class="form-grid three" style="margin-top:12px">
+      <div><label class="f">源语言</label><select id="srcLang">
+        <option value="auto" selected>自动识别</option><option value="zh-CN">中文</option><option value="en">英语</option>
+        <option value="ja">日语</option><option value="ko">韩语</option><option value="fr">法语</option><option value="de">德语</option><option value="es">西班牙语</option>
+      </select></div>
+      <div><label class="f">目标语言</label><select id="tgtLang">
+        <option value="zh-CN" selected>中文</option><option value="en">英语</option><option value="ja">日语</option>
+        <option value="ko">韩语</option><option value="fr">法语</option><option value="de">德语</option>
+        <option value="es">西班牙语</option><option value="ru">俄语</option><option value="pt">葡萄牙语</option><option value="th">泰语</option>
+      </select></div>
+      <div><label class="f">朗读语速 <span id="rateV">1.0</span></label><input type="range" id="rate" min="0.5" max="2" step="0.1" value="1" style="padding:0"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel" hidden>
+    <div class="panel-title">识别结果</div>
+    <img id="shotImg" alt="截图预览">
+    <div class="toolbar" style="margin-top:12px">
+      <button class="btn sm" id="btnOcr">🔍 提取文字</button>
+      <button class="btn sm ghost" id="btnTr">🌐 翻译</button>
+      <button class="btn sm ghost" id="btnRead">🔊 朗读</button>
+      <button class="btn sm gray" id="btnCopySrc">📋 复制原文</button>
+      <button class="btn sm gray" id="btnCopyTr">📋 复制译文</button>
+      <button class="btn sm gray" id="btnSave">💾 保存图片</button>
+    </div>
+    <div class="form-grid one" style="margin-top:12px">
+      <div><label class="f">识别出的文字（可手动改）</label><textarea id="txt" rows="5"></textarea></div>
+      <div><label class="f">译文</label><textarea id="tr" rows="5" readonly></textarea></div>
+    </div>
+  </div>
+
+  <div class="footer-f">原站的框选带 8 个拖拽把手与「沿用上次范围」；本页保留拖拽框选 + 14px 边缘磁吸 + 等比缩放，把手调整与上次范围未实现（如实说明）</div>
+</div>
+
+<div id="ov">
+  <div id="cvWrap">
+    <canvas id="cv"></canvas>
+    <div id="box"></div>
+    <div id="size"></div>
+  </div>
+  <div id="tools">
+    <button class="btn ok" id="okCrop">✓ 就这样</button>
+    <button class="btn gray" id="reCrop">🔄 重选</button>
+    <button class="btn gray" id="cancelCrop">✕ 取消</button>
+  </div>
+</div>
+<a class="pill" href="memo.html">🔔 备忘提醒</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script src="https://fastly.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" defer></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var shotData = '', view = { scale:1, ox:0, oy:0 }, rect = null, dragging = false, start = null;
+  var cv = $('cv'), ctx = cv.getContext('2d');
+
+  /* ---- 选项持久化（对应原站 ss_opts） ---- */
+  function opts(){ try { return JSON.parse(localStorage.getItem('ss_opts')||'{}'); } catch(e){ return {}; } }
+  function saveOpts(){
+    localStorage.setItem('ss_opts', JSON.stringify({ src:$('srcLang').value, tgt:$('tgtLang').value, rate:Number($('rate').value) }));
+  }
+  (function loadOpts(){
+    var o = opts();
+    if (o.src) $('srcLang').value = o.src;
+    if (o.tgt) $('tgtLang').value = o.tgt;
+    if (o.rate) { $('rate').value = o.rate; }
+    $('rateV').textContent = Number($('rate').value).toFixed(1);
+  })();
+  $('srcLang').onchange = saveOpts;
+  $('tgtLang').onchange = saveOpts;
+  $('rate').oninput = function(){ $('rateV').textContent = Number(this.value).toFixed(1); saveOpts(); };
+
+  /* ---- 截图 ---- */
+  $('btnShot').onclick = function(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
+      $('hint').textContent = '当前页面不能截屏（需 https 或 localhost）。请改用「导入图片」。'; return;
+    }
+    navigator.mediaDevices.getDisplayMedia({ video:{ displaySurface:'window' }, audio:false }).then(function(stream){
+      var v = document.createElement('video');
+      v.srcObject = stream; v.play();
+      v.onloadedmetadata = function(){
+        setTimeout(function(){
+          var c = document.createElement('canvas');
+          c.width = v.videoWidth; c.height = v.videoHeight;
+          c.getContext('2d').drawImage(v, 0, 0);
+          stream.getTracks().forEach(function(t){ t.stop(); });
+          openOverlay(c);
+        }, 200);
+      };
+    }).catch(function(e){
+      $('hint').textContent = '截屏被取消或不允许：' + e.message + '（也可以直接「导入图片」）';
+    });
+  };
+  $('btnImport').onclick = function(){ $('file').click(); };
+  $('file').onchange = function(){
+    var f = this.files[0]; if (!f) return;
+    var img = new Image(), fr = new FileReader();
+    fr.onload = function(){ img.src = fr.result; };
+    img.onload = function(){
+      var c = document.createElement('canvas');
+      c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      openOverlay(c);
+    };
+    fr.readAsDataURL(f);
+  };
+
+  /* ---- 框选遮罩 ---- */
+  function openOverlay(srcCanvas){
+    $('ov').classList.add('on');
+    cv.width = srcCanvas.width; cv.height = srcCanvas.height;
+    ctx.drawImage(srcCanvas, 0, 0);
+    fitView();
+    var b = $('box'); b.style.display = 'none'; rect = null; $('size').style.display = 'none';
+    window.__src = srcCanvas;
+  }
+  function fitView(){
+    var vw = $('cvWrap').clientWidth, vh = $('cvWrap').clientHeight;
+    var s = Math.min(vw/cv.width, vh/cv.height);
+    view.scale = s;
+    cv.style.width = (cv.width*s) + 'px';
+    cv.style.height = (cv.height*s) + 'px';
+    var wrapRect = $('cvWrap').getBoundingClientRect();
+    var cvRect = cv.getBoundingClientRect();
+    view.ox = cvRect.left - wrapRect.left;
+    view.oy = cvRect.top - wrapRect.top;
+  }
+  function posOf(e){
+    var cvRect = cv.getBoundingClientRect();
+    var x = (e.clientX - cvRect.left)/view.scale;
+    var y = (e.clientY - cvRect.top)/view.scale;
+    return { x: Math.max(0, Math.min(cv.width, x)), y: Math.max(0, Math.min(cv.height, y)) };
+  }
+  var SNAP = 14;
+  function snapRect(r){
+    if (r.x < SNAP) r.x = 0;
+    if (r.y < SNAP) r.y = 0;
+    if (cv.width - (r.x + r.w) < SNAP) r.w = cv.width - r.x;
+    if (cv.height - (r.y + r.h) < SNAP) r.h = cv.height - r.y;
+    return r;
+  }
+  function drawBox(){
+    if (!rect) return;
+    var b = $('box');
+    b.style.display = 'block';
+    b.style.left = (view.ox + rect.x*view.scale) + 'px';
+    b.style.top = (view.oy + rect.y*view.scale) + 'px';
+    b.style.width = (rect.w*view.scale) + 'px';
+    b.style.height = (rect.h*view.scale) + 'px';
+    var s = $('size');
+    s.style.display = 'block';
+    s.textContent = Math.round(rect.w) + ' × ' + Math.round(rect.h);
+    s.style.left = b.style.left;
+    s.style.top = Math.max(0, parseFloat(b.style.top) - 22) + 'px';
+  }
+  cv.addEventListener('mousedown', function(e){
+    var p = posOf(e); dragging = true; start = p;
+    rect = { x:p.x, y:p.y, w:0, h:0 };
+    drawBox();
+  });
+  window.addEventListener('mousemove', function(e){
+    if (!dragging) return;
+    var p = posOf(e);
+    rect = { x: Math.min(start.x, p.x), y: Math.min(start.y, p.y), w: Math.abs(p.x - start.x), h: Math.abs(p.y - start.y) };
+    snapRect(rect); drawBox();
+  });
+  window.addEventListener('mouseup', function(){ dragging = false; });
+
+  $('okCrop').onclick = function(){
+    if (!rect || rect.w < 6 || rect.h < 6){ HUB.toast('框太小了，重新框一下'); return; }
+    var c = document.createElement('canvas');
+    c.width = Math.round(rect.w); c.height = Math.round(rect.h);
+    c.getContext('2d').drawImage(window.__src, rect.x, rect.y, rect.w, rect.h, 0, 0, c.width, c.height);
+    shotData = c.toDataURL('image/png');
+    $('shotImg').src = shotData;
+    $('panel').hidden = false;
+    $('ov').classList.remove('on');
+    $('hint').textContent = '已截取 ' + Math.round(rect.w) + ' × ' + Math.round(rect.h) + '，点「提取文字」开始识别（本机识别，不上传）。';
+    localStorage.setItem('ss_last_rect', JSON.stringify({ x:rect.x/cv.width, y:rect.y/cv.height, w:rect.w/cv.width, h:rect.h/cv.height }));
+  };
+  $('reCrop').onclick = function(){ rect = null; $('box').style.display = 'none'; $('size').style.display = 'none'; };
+  $('cancelCrop').onclick = function(){ $('ov').classList.remove('on'); };
+  document.addEventListener('keydown', function(e){
+    if (e.altKey && (e.key === 'a' || e.key === 'A')){ e.preventDefault(); $('btnShot').click(); }
+    if (e.key === 'Escape') $('ov').classList.remove('on');
+    if (e.key === 'Enter' && $('ov').classList.contains('on')) $('okCrop').click();
+  });
+
+  /* ---- OCR ---- */
+  $('btnOcr').onclick = function(){
+    if (!shotData){ HUB.toast('先截图或导入图片'); return; }
+    if (typeof Tesseract === 'undefined'){ $('hint').textContent = '识别引擎未加载（tesseract.js 需联网首次下载），请检查网络后重试。'; return; }
+    $('hint').textContent = '识别中…（本机完成，文字不上传）';
+    Tesseract.recognize(shotData, 'chi_sim+eng', { logger:function(m){
+      if (m.status) $('hint').textContent = '识别中：' + m.status + (m.progress?' '+Math.round(m.progress*100)+'%':'');
+    }}).then(function(res){
+      var t = (res.data.text||'').trim();
+      $('txt').value = t;
+      $('hint').textContent = t ? ('识别完成，共 ' + t.length + ' 字，可直接朗读或翻译。') : '没识别到文字，换个清晰点的区域再试。';
+    }).catch(function(e){ $('hint').textContent = '识别失败：' + e.message; });
+  };
+
+  /* ---- 翻译（MyMemory，分段 450） ---- */
+  function splitText(text, limit){
+    var parts = text.split(/(?<=[。！？!?\n；;])/), out = [], cur = '';
+    parts.forEach(function(p){
+      if ((cur + p).length > limit && cur){ out.push(cur); cur = ''; }
+      cur += p;
+      while (cur.length > limit){ out.push(cur.slice(0, limit)); cur = cur.slice(limit); }
+    });
+    if (cur) out.push(cur);
+    return out.filter(function(s){ return s.trim(); });
+  }
+  $('btnTr').onclick = function(){
+    var t = $('txt').value.trim();
+    if (!t){ HUB.toast('先提取文字或手动输入'); return; }
+    var src = $('srcLang').value, tgt = $('tgtLang').value;
+    var segs = splitText(t, 450);
+    $('tr').value = '翻译中…（共 ' + segs.length + ' 段）';
+    var out = [], i = 0;
+    function step(){
+      if (i >= segs.length){
+        $('tr').value = out.join('\n');
+        $('hint').textContent = '翻译完成（' + segs.length + ' 段）。';
+        return;
+      }
+      var pair = (src === 'auto' ? 'autodetect' : src) + '|' + tgt;
+      var url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(segs[i]) + '&langpair=' + encodeURIComponent(pair);
+      fetch(url).then(function(r){ return r.json(); }).then(function(j){
+        if (j.responseStatus && Number(j.responseStatus) !== 200){ throw new Error('翻译接口返回 ' + j.responseStatus); }
+        var v = j.responseData && j.responseData.translatedText;
+        if (!v) throw new Error('翻译无结果');
+        out.push(v); i++; $('tr').value = out.join('\n'); step();
+      }).catch(function(e){
+        $('tr').value = out.join('\n') + '\n[中断] ' + e.message + '；公共接口有每日限额，量大可改用 AI 通道。';
+        $('hint').textContent = '翻译失败：' + e.message;
+      });
+    }
+    step();
+  };
+
+  /* ---- 朗读（原文，不是译文） ---- */
+  $('btnRead').onclick = function(){
+    var t = $('txt').value.trim();
+    if (!t){ HUB.toast('没有可朗读的文字'); return; }
+    if (!window.speechSynthesis){ $('hint').textContent = '当前浏览器不支持朗读。'; return; }
+    speechSynthesis.cancel();
+    var vs = speechSynthesis.getVoices();
+    var v = vs.filter(function(x){ return /zh[-_]CN/i.test(x.lang||''); })[0] || vs.filter(function(x){ return /^zh/i.test(x.lang||''); })[0];
+    var u = new SpeechSynthesisUtterance(t);
+    u.lang = 'zh-CN'; u.rate = Number($('rate').value) || 1;
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+    $('hint').textContent = '开始朗读…（语速 ' + u.rate.toFixed(1) + '）';
+  };
+
+  /* ---- 复制 / 保存 / 清空 ---- */
+  function copy(text, okMsg){
+    navigator.clipboard.writeText(text).then(function(){ HUB.toast(okMsg); }, function(){
+      var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); HUB.toast(okMsg); } catch(e){ HUB.toast('复制失败，请手动复制'); }
+      ta.remove();
+    });
+  }
+  $('btnCopySrc').onclick = function(){ copy($('txt').value, '原文已复制'); };
+  $('btnCopyTr').onclick = function(){ copy($('tr').value, '译文已复制'); };
+  $('btnSave').onclick = function(){
+    if (!shotData){ HUB.toast('没有图片'); return; }
+    var a = document.createElement('a');
+    a.href = shotData; a.download = '截图_' + new Date().toISOString().replace(/[:T]/g,'-').slice(0,19) + '.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  $('btnClear').onclick = function(){
+    shotData = ''; $('txt').value = ''; $('tr').value = ''; $('panel').hidden = true;
+    $('hint').textContent = '按 Alt+A 或点「开始截图」，浏览器会弹出共享窗口列表，选你要截的窗口即可。';
+  };
+
+  $('btnSync').onclick = HUB.openSyncDialog;
+  window.addEventListener('resize', function(){ if ($('ov').classList.contains('on')) { fitView(); drawBox(); } });
+})();
+</script>
+</body>
+</html>
