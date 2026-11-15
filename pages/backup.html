@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>数据备份与恢复</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+table.data.min{min-width:720px}
+textarea.mono{font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>🗄 数据备份与恢复</h1>
+    <div class="sub">一键打包全部数据 · 下载 / 导入恢复 · 本机自动备份</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">数据类别</div><div class="v" id="sKeys">0</div></div>
+    <div class="cell"><div class="k">记录总数</div><div class="v" id="sRows">0</div></div>
+    <div class="cell"><div class="k">上次备份</div><div class="v small" id="sLast">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">① 一键打包</div>
+    <div class="toolbar">
+      <button class="btn" id="btnExport">打包并下载 JSON</button>
+      <button class="btn ghost" id="btnCopy">复制到剪贴板</button>
+      <button class="btn ghost" id="btnView">在页面里查看</button>
+      <span class="hint" style="margin:0" id="expHint"></span>
+    </div>
+    <div class="hint">导出的结构与原站一致：<code>{app:"个人中控台门户", schema:1, backupDate, createdAt(带时区的本地时间), source:"manual-export", endpoint, counts, data}</code>。这份 JSON 就是全量数据，换设备时导入即可完整恢复。</div>
+    <textarea class="mono" id="dump" rows="8" hidden style="margin-top:12px" placeholder="点「在页面里查看」看 JSON"></textarea>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">② 各类数据明细</div>
+    <div class="table-wrap"><table class="data min" id="tbl">
+      <colgroup><col style="width:22%"><col style="width:14%"><col style="width:12%"><col style="width:38%"><col style="width:14%"></colgroup>
+      <thead><tr><th>数据类别（key）</th><th>名称</th><th>条数</th><th>内容摘要</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="hint">key 名与原站云端表 <code>cc_state</code> 完全一致，方便直接对照旧备份文件。</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">③ 导入恢复</div>
+    <div class="form-grid one">
+      <div><label class="f">选择备份 JSON 文件</label><input type="file" id="fileIn" accept=".json,application/json"></div>
+      <div><label class="f">或直接粘贴 JSON（兼容旧站备份：整份文档 / 纯数组 / {data:{...}}）</label>
+        <textarea class="mono" id="pasteIn" rows="4" placeholder='{ "app":"个人中控台门户", "data": { "cards": [...], "memos": [...] } }'></textarea></div>
+    </div>
+    <div class="dlg-foot" style="justify-content:flex-start">
+      <button class="btn" id="btnImport">导入并恢复</button>
+      <button class="btn gray" id="btnReset">恢复初始数据</button>
+    </div>
+    <div class="hint">导入会覆盖同名的数据类别，未出现在备份里的类别保持不变。导入前建议先导一份当前数据。</div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">④ 本机自动备份</div>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#4a5c73">
+      <input type="checkbox" id="autoOn"> 每天第一次打开中控台时自动存一份快照（原站是每天 03:00 由服务端跑）
+    </label>
+    <div class="hint">静态网页在关掉浏览器后无法定时执行，所以这里改成「打开即补备」：当天还没备份过就自动存一份到本机，最多保留 5 份。云端定时备份需要配一个能跑定时任务的服务器。</div>
+    <div id="snapList" style="margin-top:12px"></div>
+  </div>
+
+  <div class="footer-f">备份结构、counts 统计口径与原站一致 · 快照只存本机，不占云端</div>
+</div>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var SNAP = 'hub_v1_snapshots';
+
+  /* 计数按「记录条数」算：包了一层的对象先拆到内层数组 */
+  function records(v){
+    if (v == null) return null;
+    if (Array.isArray(v)) return v;
+    if (Array.isArray(v.items)) return v.items;
+    if (Array.isArray(v.list)) return v.list;
+    if (Array.isArray(v.data)) return v.data;
+    return null;
+  }
+  function shapeOf(key){
+    var v = HUB.get(key, null);
+    if (v == null) return '（空）';
+    var arr = records(v);
+    if (arr) return '记录 · ' + arr.length + ' 条';
+    if (typeof v === 'object'){
+      var ks = Object.keys(v);
+      return '键值 · ' + ks.length + ' 个键：' + ks.slice(0,4).join('/') + (ks.length>4?' …':'');
+    }
+    return typeof v;
+  }
+  function countOf(key){
+    var v = HUB.get(key, null);
+    if (v == null) return 0;
+    var arr = records(v);
+    if (arr) return arr.length;
+    if (typeof v === 'object') return Object.keys(v).length;
+    return 1;
+  }
+
+  function render(){
+    var keys = HUB.KEYS;
+    var total = 0;
+    keys.forEach(function(k){ total += countOf(k); });
+    $('sKeys').textContent = keys.length;
+    $('sRows').textContent = total;
+    var snaps = snapshots();
+    $('sLast').textContent = snaps.length ? snaps[0].at : '—';
+
+    var tb = $('tbl').querySelector('tbody');
+    tb.innerHTML = keys.map(function(k){
+      return '<tr><td><code>' + k + '</code></td><td>' + HUB.shapeName(k) + '</td>'
+        + '<td class="num">' + countOf(k) + '</td><td>' + HUB.esc(shapeOf(k)) + '</td>'
+        + '<td><a data-one="' + k + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">单独导出</a></td></tr>';
+    }).join('');
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-one]'), function(el){
+      el.onclick = function(){ downloadOne(el.dataset.one); };
+    });
+
+    $('expHint').textContent = '约 ' + (JSON.stringify(HUB.exportDoc()).length/1024).toFixed(1) + ' KB';
+    renderSnaps();
+  }
+
+  function download(name, text){
+    var blob = new Blob([text], { type:'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 300);
+  }
+
+  function exportText(){
+    var doc = HUB.exportDoc();
+    doc.endpoint = HUB.config().mode === 'local' ? 'localStorage' : HUB.config().mode;
+    return JSON.stringify(doc, null, 2);
+  }
+  function downloadOne(key){
+    var doc = { app:'个人中控台门户', schema:1, backupDate: HUB.todayStr(), createdAt: new Date().toISOString(),
+      source:'single-key-export', key:key, data:{} };
+    doc.data[key] = HUB.get(key, null);
+    download('中控台_' + key + '_' + HUB.todayStr() + '.json', JSON.stringify(doc, null, 2));
+    HUB.toast('已导出 ' + key);
+  }
+
+  $('btnExport').onclick = function(){
+    download('中控台备份_' + HUB.todayStr() + '.json', exportText());
+    markBackedUp();
+    HUB.toast('已生成备份文件');
+    render();
+  };
+  $('btnCopy').onclick = function(){
+    navigator.clipboard.writeText(exportText()).then(function(){ HUB.toast('已复制到剪贴板'); },
+      function(){ HUB.toast('复制失败，请用下载'); });
+  };
+  $('btnView').onclick = function(){
+    var t = $('dump'); t.hidden = !t.hidden;
+    if (!t.hidden) t.value = exportText();
+  };
+
+  /* ---- 导入 ---- */
+  function doImport(text){
+    var obj;
+    try { obj = JSON.parse(text); } catch(e){ HUB.toast('不是合法 JSON：' + e.message); return; }
+    var n;
+    try { n = HUB.importDoc(obj); } catch(e){ HUB.toast('导入失败：' + e.message); return; }
+    HUB.toast('已恢复 ' + n + ' 类数据，页面即将刷新');
+    setTimeout(function(){ location.reload(); }, 1000);
+  }
+  $('fileIn').onchange = function(){
+    var f = this.files[0]; if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){ doImport(String(fr.result)); };
+    fr.readAsText(f, 'utf-8');
+  };
+  $('btnImport').onclick = function(){
+    var t = ($('pasteIn').value||'').trim();
+    if (!t){ HUB.toast('先选文件或粘贴 JSON'); return; }
+    if (!confirm('导入会覆盖同名的数据类别，确定继续？')) return;
+    doImport(t);
+  };
+  $('btnReset').onclick = function(){
+    if (!confirm('恢复初始数据会清掉你现在所有改动，只保留内置种子数据。确定？')) return;
+    HUB.resetToSeed(); HUB.toast('已恢复初始数据'); setTimeout(function(){ location.reload(); }, 900);
+  };
+
+  /* ---- 本机快照 ---- */
+  function snapshots(){
+    try { return JSON.parse(localStorage.getItem(SNAP) || '[]') || []; } catch(e){ return []; }
+  }
+  function saveSnaps(list){
+    try { localStorage.setItem(SNAP, JSON.stringify(list)); } catch(e){ HUB.toast('本机空间不够，快照没存上'); }
+  }
+  function markBackedUp(){
+    var s = snapshots();
+    if (s.length && s[0].date === HUB.todayStr()) return;
+    var doc = HUB.exportDoc();
+    s.unshift({ date: HUB.todayStr(), at: HUB.nowStamp(), size: JSON.stringify(doc).length, doc: doc });
+    saveSnaps(s.slice(0, 5));
+  }
+  function renderSnaps(){
+    var s = snapshots();
+    if (!s.length){ $('snapList').innerHTML = '<div class="empty">还没有本机快照</div>'; return; }
+    $('snapList').innerHTML = s.map(function(x, i){
+      return '<div class="scard" style="margin-top:8px"><div class="row1"><div class="nm">' + x.date + ' · ' + x.at + '</div>'
+        + '<div class="x"><a data-restore="' + i + '">恢复这份</a><a class="del" data-drop="' + i + '">删除</a></div></div>'
+        + '<div class="src">' + (x.size/1024).toFixed(1) + ' KB · ' + Object.keys(x.doc.data||{}).length + ' 类数据</div></div>';
+    }).join('');
+    Array.prototype.forEach.call($('snapList').querySelectorAll('[data-restore]'), function(el){
+      el.onclick = function(){
+        var s2 = snapshots(), x = s2[Number(el.dataset.restore)];
+        if (!x || !confirm('用 ' + x.date + ' 的快照覆盖当前数据？')) return;
+        try { HUB.importDoc(x.doc); HUB.toast('已恢复到 ' + x.date); setTimeout(function(){ location.reload(); }, 900); }
+        catch(e){ HUB.toast('恢复失败：' + e.message); }
+      };
+    });
+    Array.prototype.forEach.call($('snapList').querySelectorAll('[data-drop]'), function(el){
+      el.onclick = function(){
+        var s2 = snapshots(); s2.splice(Number(el.dataset.drop), 1); saveSnaps(s2); renderSnaps();
+      };
+    });
+  }
+  $('autoOn').checked = localStorage.getItem('hub_v1_auto') === '1';
+  $('autoOn').onchange = function(){
+    localStorage.setItem('hub_v1_auto', this.checked ? '1' : '0');
+    if (this.checked){ markBackedUp(); renderSnaps(); HUB.toast('今天已自动备份一份'); }
+  };
+  if ($('autoOn').checked){
+    var s = snapshots();
+    if (!(s.length && s[0].date === HUB.todayStr())) markBackedUp();
+  }
+
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+  renderSnaps();
+})();
+</script>
+</body>
+</html>
