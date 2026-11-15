@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>备忘提醒系统</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231a6ee0'/><circle cx='32' cy='34' r='16' fill='none' stroke='white' stroke-width='5'/><rect x='29' y='20' width='6' height='10' fill='white'/></svg>">
+<link rel="stylesheet" href="../shared/hub.css">
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>🔔 备忘提醒系统</h1>
+    <div class="sub">到期高亮 · 完成归档 · 全局唯一重要标记 · 信用卡宽限期自动提醒</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">待办</div><div class="v" id="sTodo">0</div></div>
+    <div class="cell"><div class="k">已逾期 / 24h 内</div><div class="v" id="sUrgent">0</div></div>
+    <div class="cell"><div class="k">已完成</div><div class="v" id="sDone">0</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">➕ 新增备忘</div>
+    <div class="form-grid">
+      <div style="grid-column:1/-1">
+        <label class="f">内容</label>
+        <textarea id="inText" rows="2" placeholder="要记的事，例如：九江信用卡还款 / 陈生电话回访"></textarea>
+      </div>
+      <div>
+        <label class="f">提醒时间（可留空）</label>
+        <input type="datetime-local" id="inTime">
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button class="btn" id="btnAdd">添加</button>
+        <button class="btn gray" id="btnGenAuto" title="按信用卡账单重新生成宽限期提醒">重新生成自动提醒</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <span>📋 清单</span>
+      <span class="grow"></span>
+      <input type="search" id="inSearch" placeholder="搜索内容…" style="max-width:220px">
+    </div>
+    <div class="checkline" style="margin-bottom:4px">
+      <label><input type="radio" name="fl" value="todo" checked> 待办</label>
+      <label><input type="radio" name="fl" value="all"> 全部</label>
+      <label><input type="radio" name="fl" value="done"> 已完成</label>
+      <span style="margin-left:auto;font-size:12px;color:#98a4b5">按重要度排序，前 1 条自动加「重要」</span>
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <div class="footer-f">提醒时间 = 信用卡宽限期截止减 1 天，时刻不变 · 生成规则与原站一致</div>
+</div>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  function memos(){ return HUB.get('memos', []) || []; }
+  function save(list){ HUB.set('memos', list); }
+
+  var IMPORTANT_RE = /还款|宽限|逾期|征信|罚息|账单|缴费|保费|保险|医院|体检|到期|续费|还钱|转账/;
+  var MINOR_RE = /优惠|会员|折扣|摞|领|免费|赠送|红包|券/;
+
+  function msOf(m){ if(!m.time) return null; var t = new Date(m.time.replace(' ', 'T')).getTime(); return isNaN(t)?null:t; }
+  function daysTo(t){ return (t - Date.now())/86400000; }
+  function score(m){
+    var s = 0;
+    if (m.auto || /^auto_c\d+_/.test(m.id||'')) s += 100;
+    var t = msOf(m), d;
+    if (t != null){
+      d = daysTo(t);
+      if (d < 0) s += Math.max(25, 85 + Math.round(d)*8);
+      else if (d < 1) s += 80;
+      else if (d < 3) s += 50;
+      else s += 30;
+    }
+    if (IMPORTANT_RE.test(m.text||'')) s += 25;
+    else if (MINOR_RE.test(m.text||'')) s -= 10;
+    return s;
+  }
+  function sortList(list){
+    return list.slice().sort(function(a,b){
+      if (!!a.done !== !!b.done) return a.done ? 1 : -1;
+      var sa = score(a), sb = score(b);
+      if (sb !== sa) return sb - sa;
+      var ta = msOf(a), tb = msOf(b);
+      if (ta == null && tb == null) return (b.created||0) - (a.created||0);
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return ta - tb;
+    });
+  }
+  /* 全局最多一条 important：评分最高的那条 */
+  function markImportant(){
+    var list = memos();
+    var cand = list.filter(function(m){ return !m.done; });
+    var best = null, bs = -1e9;
+    cand.forEach(function(m){ var s = score(m); if (s > bs){ bs = s; best = m; } });
+    var changed = false;
+    list.forEach(function(m){
+      var want = (best && m.id === best.id);
+      if (!!m.important !== want){ m.important = want; changed = true; }
+    });
+    if (changed) save(list);
+    return list;
+  }
+
+  /* 信用卡宽限期自动提醒：宽限期截止减 1 天，时刻不变 */
+  function addDays(dt, n){ var d = new Date(dt.getTime()); d.setDate(d.getDate()+n); return d; }
+  function graceEndOf(c){
+    if (!c.dueDate) return null;
+    var base = new Date(c.dueDate + 'T23:59:59');
+    if (isNaN(base)) return null;
+    var g = new Date(base.getTime());
+    g.setDate(g.getDate() + (Number(c.graceDays)||0));
+    g.setHours(Number(c.graceHour)||0, 0, 0, 0);
+    return g;
+  }
+  function genAuto(silent){
+    var cards = HUB.get('cards', []) || [];
+    var list = memos();
+    var ids = {};
+    list.forEach(function(m){ ids[m.id] = true; });
+    var created = 0;
+    cards.forEach(function(c){
+      var amt = Number(c.billAmount)||0;
+      if (!(amt > 0)) return;
+      var due = new Date((c.dueDate||'') + 'T23:59:59');
+      if (isNaN(due)) return;
+      var now = Date.now();
+      if (!(now < due.getTime())) return;          // 已过账单日不再生成
+      var ge = graceEndOf(c); if (!ge) return;
+      if (now > addDays(ge, 7).getTime()) return;  // 超宽限期 7 天不再生成
+      var id = 'auto_' + c.id + '_' + c.dueDate;
+      if (ids[id]) return;
+      var remind = addDays(ge, -1);                // 减 1 天，时刻不变
+      var pad = HUB.pad2;
+      var time = remind.getFullYear()+'-'+pad(remind.getMonth()+1)+'-'+pad(remind.getDate())
+               + 'T' + pad(remind.getHours()) + ':' + pad(remind.getMinutes());
+      list.push({
+        id: id, auto: true, done: false,
+        text: (c.bank||'信用卡') + ' 宽限期到' + (ge.getMonth()+1) + '月' + ge.getDate() + '日' + ge.getHours() + '点',
+        time: time, created: Date.now(), important: false
+      });
+      ids[id] = true; created++;
+    });
+    if (created){ save(list); }
+    if (!silent) HUB.toast(created ? '生成 ' + created + ' 条宽限期提醒' : '没有需要新生成的提醒');
+    render();
+  }
+
+  function fmtTime(m){
+    var t = msOf(m); if (t == null) return { txt:'无时间', cls:'nd' };
+    var d = (t - Date.now())/3600000;
+    var dt = new Date(t);
+    var stamp = HUB.pad2(dt.getMonth()+1)+'-'+HUB.pad2(dt.getDate())+' '+HUB.pad2(dt.getHours())+':'+HUB.pad2(dt.getMinutes());
+    if (d < 0) return { txt: stamp + ' · 已过 ' + Math.abs(Math.round(d)) + ' 小时', cls:'up' };
+    if (d < 1) return { txt: stamp + ' · 还剩 ' + Math.round(d*60) + ' 分钟', cls:'up' };
+    if (d < 24) return { txt: stamp + ' · 还剩 ' + Math.round(d) + ' 小时', cls:'up' };
+    return { txt: stamp + ' · 还剩 ' + Math.round(d/24) + ' 天', cls:'down' };
+  }
+
+  function render(){
+    var list = markImportant();
+    var fl = document.querySelector('input[name=fl]:checked').value;
+    var q = ($('inSearch').value || '').trim().toLowerCase();
+    var shown = sortList(list).filter(function(m){
+      if (fl === 'todo' && m.done) return false;
+      if (fl === 'done' && !m.done) return false;
+      if (q && (m.text||'').toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    var todo = list.filter(function(m){ return !m.done; });
+    $('sTodo').textContent = todo.length;
+    $('sDone').textContent = list.filter(function(m){ return m.done; }).length;
+    var urgent = 0;
+    todo.forEach(function(m){ var t = msOf(m); if (t != null && (t - Date.now())/3600000 < 24) urgent++; });
+    $('sUrgent').textContent = urgent;
+
+    if (!shown.length){ $('list').innerHTML = '<div class="empty">没有符合条件的备忘</div>'; return; }
+
+    $('list').innerHTML = shown.map(function(m){
+      var f = fmtTime(m), tags = [];
+      if (m.important) tags.push('<span class="tag hot">重要</span>');
+      if (m.auto) tags.push('<span class="tag">自动</span>');
+      return '<div class="scard' + (m.important?' pinned':'') + '" style="margin-top:10px;' + (m.done?'opacity:.62':'') + '">'
+        + '<div class="row1">'
+        + '<input type="checkbox" data-done="' + m.id + '"' + (m.done?' checked':'') + ' style="margin-top:3px">'
+        + '<div class="nm" style="font-weight:400;font-size:14.5px;' + (m.done?'text-decoration:line-through':'') + '">' + HUB.esc(m.text) + '</div>'
+        + '<div class="x"><a data-star="' + m.id + '">' + (m.important?'取消重要':'设为重要') + '</a>'
+        + '<a data-edit="' + m.id + '">改时间</a>'
+        + '<a class="del" data-del="' + m.id + '">删除</a></div></div>'
+        + '<div class="src">' + f.txt.replace(f.txt, '<span class="' + f.cls + '">' + f.txt + '</span>') + ' ' + tags.join('') + '</div>'
+        + '</div>';
+    }).join('');
+
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-done]'), function(el){
+      el.onchange = function(){
+        var l = memos(); l.forEach(function(x){ if (x.id === el.dataset.done) x.done = el.checked; });
+        save(l); render();
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-star]'), function(el){
+      el.onclick = function(){
+        var l = memos(), id = el.dataset.star, target = null;
+        l.forEach(function(x){ if (x.id === id) target = x; });
+        if (!target) return;
+        var want = !target.important;
+        l.forEach(function(x){ x.important = false; });
+        target.important = want;
+        save(l); render();
+        HUB.toast(want ? '已置为唯一重要' : '已取消重要');
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这条备忘？')) return;
+        save(memos().filter(function(x){ return x.id !== el.dataset.del; })); render();
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){
+      el.onclick = function(){
+        var l = memos(); l.forEach(function(x){
+          if (x.id !== el.dataset.edit) return;
+          var v = prompt('提醒时间（格式 2026-11-20 17:00，留空=无时间）', (x.time||'').replace('T',' '));
+          if (v === null) return;
+          x.time = v.trim() ? v.trim().replace(' ','T').slice(0,16) : '';
+          x.created = x.created || Date.now();
+        });
+        save(l); render();
+      };
+    });
+  }
+
+  $('btnAdd').onclick = function(){
+    var t = ($('inText').value||'').trim();
+    if (!t) { HUB.toast('先写内容'); return; }
+    var list = memos();
+    list.push({ id:'m'+Date.now(), done:false, text:t, time:($('inTime').value||''), created:Date.now(), important:false });
+    save(list);
+    $('inText').value = ''; $('inTime').value = '';
+    HUB.toast('已添加');
+    render();
+  };
+  $('inText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey||e.metaKey)) $('btnAdd').click(); });
+  $('btnGenAuto').onclick = function(){ genAuto(false); };
+  $('inSearch').oninput = render;
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=fl]'), function(r){ r.onchange = render; });
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+
+  genAuto(true);
+  render();
+})();
+</script>
+</body>
+</html>
