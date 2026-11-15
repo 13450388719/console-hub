@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信用卡优惠资讯</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+.pfbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.oCard{background:#fff;border-radius:12px;padding:14px 16px;border-top:3px solid #6f8fc4;box-shadow:0 2px 10px rgba(26,60,110,.07)}
+.oCard.fq{border-top-color:#1a6ee0} .oCard.fx{border-top-color:#1a7f45} .oCard.jz{border-top-color:#e0a828}
+.oCard h3{font-size:14.5px;color:#1a3c6e;font-weight:700;line-height:1.5}
+.oCard .meta{font-size:12px;color:#8a94a6;margin-top:5px}
+.oCard .txt{font-size:13.5px;line-height:1.8;color:#3c5171;margin-top:7px}
+.oCard .foot{font-size:12px;color:#8a94a6;margin-top:8px;border-top:1px dashed #eceff4;padding-top:7px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="credit-card.html">← 返回信用卡</a>
+  <div class="hd">
+    <h1>🎁 信用卡优惠资讯</h1>
+    <div class="sub">淘宝 / 京东 / 美团 / 拼多多 四平台满减、分期免息与财政贴息</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="panel" id="policyBox" hidden style="border-left:4px solid #c0392b">
+    <div class="panel-title" id="policyTitle">财政贴息（限时）</div>
+    <div id="policyBody" class="hint" style="font-size:13.5px;color:#4a5c73;line-height:1.85"></div>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">优惠条数</div><div class="v" id="sAll">0</div></div>
+    <div class="cell"><div class="k">覆盖银行</div><div class="v" id="sBank">0</div></div>
+    <div class="cell"><div class="k">数据日期</div><div class="v small" id="sDate">—</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜银行 / 活动名 / 说明…" style="flex:1;min-width:180px">
+      <select id="typeSel" style="max-width:170px">
+        <option value="">全部类型</option>
+        <option value="jz">支付立减 / 满减</option>
+        <option value="fq">分期免息 / 分期满减</option>
+        <option value="fx">笔笔返现</option>
+      </select>
+    </div>
+    <div class="pfbar" id="pfbar"></div>
+    <div class="hint" id="srcHint"></div>
+  </div>
+
+  <div class="cards" id="list" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))"></div>
+
+  <div class="footer-f">优惠以收银台实际显示为准 · 每日重搜四平台，条数与原站一致（23 条）</div>
+</div>
+
+<a class="pill" href="credit-card.html">💳 返回信用卡</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var curPf = '', curQ = '';
+  var TYPE = { jz:'支付立减', fq:'分期免息', fx:'笔笔返现' };
+  function data(){ return HUB.get('offers', {items:[], updatedAt:'', policy:null}) || {items:[]}; }
+
+  function render(){
+    var d = data(), items = d.items || [];
+    if (d.policy && d.policy.show !== false){
+      $('policyBox').hidden = false;
+      $('policyTitle').textContent = '📌 ' + (d.policy.title || '政策提示');
+      $('policyBody').textContent = d.policy.body || '';
+    } else $('policyBox').hidden = true;
+
+    var pfs = {}, banks = {};
+    items.forEach(function(o){ pfs[o.pf] = (pfs[o.pf]||0)+1; banks[o.bank] = 1; });
+    $('sAll').textContent = items.length;
+    $('sBank').textContent = Object.keys(banks).length;
+    $('sDate').textContent = d.updatedAt || '—';
+    $('srcHint').textContent = '数据来源：' + (d.source || '原站每日自动重搜') + '，最近更新 ' + (d.updatedAt||'—');
+
+    $('pfbar').innerHTML = '<span class="tag' + (curPf===''?' pin':'') + '" data-pf="" style="cursor:pointer">全部 ' + items.length + '</span>'
+      + Object.keys(pfs).map(function(p){
+        return '<span class="tag' + (curPf===p?' pin':'') + '" data-pf="' + HUB.esc(p) + '" style="cursor:pointer">' + HUB.esc(p) + ' ' + pfs[p] + '</span>';
+      }).join('');
+    Array.prototype.forEach.call($('pfbar').querySelectorAll('[data-pf]'), function(el){
+      el.onclick = function(){ curPf = el.dataset.pf; render(); };
+    });
+
+    var t = $('typeSel').value;
+    var shown = items.filter(function(o){
+      if (curPf && o.pf !== curPf) return false;
+      if (t && o.type !== t) return false;
+      if (!curQ) return true;
+      return [o.bank, o.title, o.detail, o.note, o.threshold].join(' ').toLowerCase().indexOf(curQ) >= 0;
+    });
+
+    if (!shown.length){ $('list').innerHTML = '<div class="empty" style="grid-column:1/-1">没有符合条件的优惠</div>'; return; }
+    $('list').innerHTML = shown.map(function(o){
+      return '<div class="oCard ' + HUB.esc(o.type||'') + '">'
+        + '<h3>' + HUB.esc(o.title) + '</h3>'
+        + '<div class="meta">' + HUB.esc(o.pf) + ' · ' + HUB.esc(o.bank)
+        + (o.region ? ' <span class="tag hot">地区性</span>' : '') + ' <span class="tag">' + (TYPE[o.type]||'优惠') + '</span></div>'
+        + '<div class="txt">' + HUB.esc(o.detail) + '</div>'
+        + '<div class="foot">门槛：' + HUB.esc(o.threshold||'—') + ' ｜ 期间：' + HUB.esc(o.period||'—')
+        + (o.note ? '<br>提示：' + HUB.esc(o.note) : '') + '</div></div>';
+    }).join('');
+  }
+
+  $('q').oninput = function(){ curQ = this.value.trim().toLowerCase(); render(); };
+  $('typeSel').onchange = render;
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+})();
+</script>
+</body>
+</html>
