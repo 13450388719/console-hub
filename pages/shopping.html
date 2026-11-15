@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>购物计价系统</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+table.data.min{min-width:820px}
+th .pf{font-size:11px;color:#93a1b4;font-weight:400;display:block}
+.best{color:#c0392b;font-weight:700}
+.thumb{width:52px;height:52px;object-fit:cover;border-radius:7px;border:1px solid #eceff4;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>🛒 购物计价系统</h1>
+    <div class="sub">拼多多 · 淘宝 · 抖音 · 京东 四平台比价，自动标最低</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">商品数</div><div class="v" id="sN">0</div></div>
+    <div class="cell"><div class="k">已比价</div><div class="v" id="sCmp">0</div></div>
+    <div class="cell"><div class="k">最高可省</div><div class="v small" id="sSave">¥0</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜商品名 / 备注…" style="flex:1;min-width:170px">
+      <button class="btn" id="btnAdd">＋ 新增商品</button>
+      <button class="btn gray" id="btnSort">按最低价排序</button>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="panel">
+    <div class="table-wrap"><table class="data min" id="tbl">
+      <colgroup><col style="width:9%"><col style="width:19%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"><col style="width:12%"></colgroup>
+      <thead><tr><th>图片</th><th>商品</th>
+        <th class="num">拼多多<span class="pf">低价平台</span></th>
+        <th class="num">淘宝<span class="pf">天猫/集市</span></th>
+        <th class="num">抖音<span class="pf">抖店</span></th>
+        <th class="num">京东<span class="pf">自营/三方</span></th>
+        <th class="num">最低价</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="empty" id="empty" hidden>
+      还没有商品。点「新增商品」把要买的东西录进来：名称、四个平台的价格和看价日期，页面会自动算出最低价和能省多少。
+    </div>
+  </div>
+
+  <div class="footer-f">最低价取四平台中已填价格的最小值 · 图片压缩到长边 720px / JPEG 0.72，超 24 万字符再降到 560px / 0.6</div>
+</div>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var curQ = '', sortBest = false;
+  var PF = ['pdd','tb','dy','jd'];
+  var PFNAME = { pdd:'拼多多', tb:'淘宝', dy:'抖音', jd:'京东' };
+
+  function data(){ return HUB.get('shopping', {items:[], sort:{key:'created',dir:'desc'}}) || {items:[]}; }
+  function items(){ return data().items || []; }
+  function save(l, meta){ var d = data(); d.items = l; d.updatedAt = HUB.nowStamp(); HUB.set('shopping', d); }
+
+  function bestOf(it){
+    var best = null, pf = null;
+    PF.forEach(function(k){
+      var v = it.prices && it.prices[k] != null ? Number(it.prices[k]) : null;
+      if (v == null || !(v > 0)) return;
+      if (best == null || v < best){ best = v; pf = k; }
+    });
+    return { price: best, pf: pf };
+  }
+  function money(n){ return n == null ? '—' : '¥' + Number(n).toFixed(2); }
+
+  function render(){
+    var l = items();
+    var q = curQ.toLowerCase();
+    var shown = l.filter(function(it){
+      if (!q) return true;
+      return (it.name + ' ' + (it.note||'')).toLowerCase().indexOf(q) >= 0;
+    }).slice();
+
+    if (sortBest) shown.sort(function(a,b){
+      var ba = bestOf(a).price, bb = bestOf(b).price;
+      if (ba == null) return 1; if (bb == null) return -1;
+      return ba - bb;
+    });
+    else shown.sort(function(a,b){ return (b.created||0) - (a.created||0); });
+
+    var cmp = 0, maxSave = 0;
+    l.forEach(function(it){
+      var vals = PF.map(function(k){ return (it.prices && it.prices[k] > 0) ? Number(it.prices[k]) : null; }).filter(function(v){ return v != null; });
+      if (vals.length >= 2){
+        cmp++;
+        maxSave = Math.max(maxSave, Math.max.apply(null, vals) - Math.min.apply(null, vals));
+      }
+    });
+    $('sN').textContent = l.length; $('sCmp').textContent = cmp; $('sSave').textContent = money(maxSave);
+    $('hint').textContent = '最近更新 ' + (data().updatedAt || '—') + ' · 现有 ' + l.length + ' 个商品';
+
+    var tb = $('tbl').querySelector('tbody');
+    $('empty').hidden = !!l.length;
+    if (!shown.length){ tb.innerHTML = l.length ? '<tr><td colspan="8" style="text-align:center;color:#a8b3c2">没有匹配的商品</td></tr>' : ''; return; }
+
+    tb.innerHTML = shown.map(function(it){
+      var b = bestOf(it);
+      return '<tr>'
+        + '<td>' + (it.img ? '<img class="thumb" src="' + it.img + '" data-img="' + it.id + '">' : '<span style="color:#c3ccd8">无图</span>') + '</td>'
+        + '<td><b>' + HUB.esc(it.name) + '</b>' + (it.note?'<br><span style="font-size:11.5px;color:#93a1b4">'+HUB.esc(it.note)+'</span>':'') + '</td>'
+        + PF.map(function(k){
+          var v = it.prices && it.prices[k] != null && it.prices[k] !== '' ? Number(it.prices[k]) : null;
+          var isBest = b.pf === k && v != null;
+          return '<td class="num' + (isBest?' best':'') + '">' + money(v) + (it.dates && it.dates[k] ? '<br><span style="font-size:10.5px;color:#b0bccb">'+HUB.esc(it.dates[k])+'</span>' : '') + '</td>';
+        }).join('')
+        + '<td class="num best">' + money(b.price) + (b.pf ? '<br><span style="font-size:10.5px;color:#c0392b">' + PFNAME[b.pf] + '</span>' : '') + '</td>'
+        + '<td><a data-edit="' + it.id + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">编辑</a> '
+        + '<a data-del="' + it.id + '" style="font-size:12px;color:#c0392b;cursor:pointer">删</a></td>'
+        + '</tr>';
+    }).join('');
+
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-edit]'), function(el){ el.onclick = function(){ edit(el.dataset.edit); }; });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这个商品？')) return;
+        save(items().filter(function(x){ return x.id !== el.dataset.del; })); render();
+      };
+    });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-img]'), function(el){
+      el.onclick = function(){
+        var m = document.createElement('div'); m.className = 'mask';
+        m.innerHTML = '<div class="dlg" style="max-width:700px;background:transparent;box-shadow:none"><img src="' + el.src + '" style="width:100%;border-radius:10px"></div>';
+        document.body.appendChild(m); m.onclick = function(){ m.remove(); };
+      };
+    });
+  }
+
+  function edit(id){
+    var cur = items().filter(function(x){ return x.id === id; })[0] || {
+      id:'s'+Date.now(), name:'', note:'', img:'', prices:{pdd:'',tb:'',dy:'',jd:''}, dates:{}, createdAt:Date.now()
+    };
+    var isNew = !items().filter(function(x){ return x.id === id; }).length;
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:700px"><h3>' + (isNew?'新增商品':'编辑 · ' + HUB.esc(cur.name)) + '</h3>'
+      + '<p class="dlg-sub">价格空的平台会跳过，不参与比价</p>'
+      + '<div class="form-grid">'
+      + '<div style="grid-column:1/-1"><label class="f">商品名称</label><input id="sName" type="text" value="' + HUB.esc(cur.name) + '"></div>'
+      + '<div style="grid-column:1/-1"><label class="f">备注（规格 / 店铺 / 券后说明）</label><input id="sNote" type="text" value="' + HUB.esc(cur.note||'') + '"></div>'
+      + PF.map(function(k){
+        return '<div><label class="f">' + PFNAME[k] + ' 价格</label><input id="p_' + k + '" type="number" step="0.01" value="' + (cur.prices&&cur.prices[k]!=null?cur.prices[k]:'') + '"></div>';
+      }).join('')
+      + '<div><label class="f">图片（可空）</label><input id="sImg" type="file" accept="image/*"></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="sClose">取消</button><button class="btn" id="sSave">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#sClose').onclick = function(){ m.remove(); };
+    m.querySelector('#sSave').onclick = function(){
+      var name = m.querySelector('#sName').value.trim();
+      if (!name){ HUB.toast('商品名要填'); return; }
+      var prices = {}, dates = Object.assign({}, cur.dates||{}), today = HUB.todayStr().slice(5);
+      PF.forEach(function(k){
+        var v = m.querySelector('#p_' + k).value;
+        prices[k] = v === '' ? '' : Number(v);
+        if (v !== '' && prices[k] !== (cur.prices && cur.prices[k])) dates[k] = today;
+      });
+      var obj = { id: cur.id, name:name, note:m.querySelector('#sNote').value.trim(), prices:prices, dates:dates,
+        img: cur.img || '', createdAt: cur.createdAt || Date.now() };
+      var commit = function(){
+        var l = items(), idx = -1; l.forEach(function(x,i){ if (x.id === obj.id) idx = i; });
+        if (idx >= 0) l[idx] = obj; else l.push(obj);
+        save(l); m.remove(); render(); HUB.toast('已保存');
+      };
+      var f = m.querySelector('#sImg').files[0];
+      if (!f) { commit(); return; }
+      var img = new Image(), fr = new FileReader();
+      fr.onload = function(){ img.src = fr.result; };
+      img.onload = function(){
+        var sc = Math.min(1, 720/Math.max(img.width, img.height));
+        var cv = document.createElement('canvas');
+        cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        var dataUrl = cv.toDataURL('image/jpeg', 0.72);
+        if (dataUrl.length > 240000){
+          var sc2 = Math.min(1, 560/Math.max(img.width, img.height));
+          var cv2 = document.createElement('canvas');
+          cv2.width = Math.round(img.width*sc2); cv2.height = Math.round(img.height*sc2);
+          cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
+          dataUrl = cv2.toDataURL('image/jpeg', 0.6);
+        }
+        obj.img = dataUrl; commit();
+      };
+      fr.readAsDataURL(f);
+    };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  }
+
+  $('btnAdd').onclick = function(){ edit(''); };
+  $('btnSort').onclick = function(){
+    sortBest = !sortBest; this.textContent = sortBest ? '按录入时间排序' : '按最低价排序'; render();
+  };
+  $('q').oninput = function(){ curQ = this.value.trim(); render(); };
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+})();
+</script>
+</body>
+</html>
