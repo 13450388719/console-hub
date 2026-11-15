@@ -84,7 +84,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:#1a6ee0;}
 .stat .cell .v.small{font-size:14px;}
 
 /* ---------- 卡片列表 ---------- */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;margin-top:14px;}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px;}
 .scard{background:#fff;border-radius:12px;padding:14px 16px;box-shadow:0 2px 10px rgba(26,60,110,.07);border-top:3px solid #6f8fc4;position:relative;}
 .scard.pinned{border-top-color:#e0a828;background:#fffdf7;}
 .scard .row1{display:flex;align-items:flex-start;gap:8px;}
@@ -150,13 +150,9 @@ footer.f{text-align:center;margin-top:26px;font-size:12px;color:#a5aebd;line-hei
   .hd{padding-top:46px;}
   .hd h1{font-size:20px;}
   .back{position:static;display:inline-flex;margin-bottom:10px;}
-  .cards{grid-template-columns:1fr;}
   .form-grid,.form-grid.three{grid-template-columns:1fr;}
   .stat{grid-template-columns:1fr 1fr;}
   .stat .cell:last-child{grid-column:1 / -1;}
   .dlg{padding:16px;}
   .panel{padding:13px 13px;}
-}
-@media (min-width:641px) and (max-width:1020px){
-  .cards{grid-template-columns:repeat(2,1fr);}
 }
