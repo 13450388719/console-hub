@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>信用卡还款管理系统</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.tabbtn{font-size:13.5px;padding:8px 14px;border-radius:9px;border:1px solid #d5dbe5;background:#fff;color:#3c5171;cursor:pointer;font-family:inherit}
+.tabbtn.on{background:#1a6ee0;border-color:#1a6ee0;color:#fff;font-weight:600}
+.tabpane{display:none} .tabpane.on{display:block}
+table.data.min{min-width:680px}
+#tblCards{min-width:940px}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:10px}
+.kv .b{background:#f7f9fd;border:1px solid #e6ecf5;border-radius:9px;padding:9px 11px}
+.kv .b .k{font-size:11.5px;color:#93a1b4} .kv .b .v{font-size:16px;font-weight:700;color:#1a3c6e;margin-top:2px;font-variant-numeric:tabular-nums}
+.op{color:#1a6ee0;cursor:pointer;font-size:12.5px;white-space:nowrap;margin-right:6px}
+.op.del{color:#c0392b}
+.st-over td .op{color:#fff;text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>💳 信用卡还款管理系统</h1>
+    <div class="sub">卡片档案 · 还款倒计时 · 还款金额测算 · 分期利率反推 · 优惠资讯</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">卡数</div><div class="v" id="sCards">0</div></div>
+    <div class="cell"><div class="k">本期账单合计</div><div class="v small" id="sBill">¥0</div></div>
+    <div class="cell"><div class="k">宽限期内 / 已逾期</div><div class="v small" id="sWarn">0 / 0</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tabbtn on" data-tab="t1">信用卡列表</button>
+    <button class="tabbtn" data-tab="t2">还款金额计算</button>
+    <button class="tabbtn" data-tab="t3">分期计算</button>
+    <button class="tabbtn" data-tab="t4">🎁 优惠资讯</button>
+  </div>
+
+  <!-- ===== tab1 ===== -->
+  <div class="tabpane on" id="t1">
+    <div class="panel">
+      <div class="panel-title"><span>卡片档案</span><span class="grow"></span>
+        <button class="btn sm" id="btnAddCard">＋ 新增卡片</button>
+        <button class="btn sm gray" id="btnGenMemo">生成宽限期提醒</button>
+      </div>
+      <div class="table-wrap"><table class="data" id="tblCards">
+        <colgroup><col style="width:12%"><col style="width:8%"><col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:12%"><col style="width:11%"></colgroup>
+        <thead><tr><th>银行</th><th>备注</th><th>额度</th><th>账单日</th><th>还款日</th><th>宽限期</th><th>本期账单</th><th>剩余额度</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="hint">状态判定：还款日当天 23:59 前正常；过了还款日进入宽限期（浅红底）；过宽限期截止为逾期（深红底）。宽限期截止 = 还款日 + 宽限天数，时刻取「宽限时点」。</div>
+    </div>
+  </div>
+
+  <!-- ===== tab2 ===== -->
+  <div class="tabpane" id="t2">
+    <div class="panel">
+      <div class="panel-title">① 勾选待还卡片 · 填现金与费率</div>
+      <div id="pickList"></div>
+      <div class="form-grid three" style="margin-top:12px">
+        <div><label class="f">手头可动用现金（元）</label><input type="number" id="cashIn" step="0.01" value="0"></div>
+        <div><label class="f">套现费率（‰，千分之几）</label><input type="number" id="feeIn" step="0.01" value="6"></div>
+        <div style="display:flex;align-items:flex-end"><button class="btn" id="btnCalc">开始计算</button></div>
+      </div>
+      <div class="hint">余下账单要靠套现补，套现的手续费也要从刷出来的额度里出，所以「需要刷出」= 余下账单 ÷ (1 − 费率)，不是简单的余下账单 × (1+费率)。</div>
+    </div>
+    <div class="panel" id="calcOut" hidden></div>
+    <div class="panel">
+      <div class="panel-title">② 出款区 · 按卡剩余额度分配</div>
+      <div class="table-wrap"><table class="data min" id="tblOut">
+        <colgroup><col style="width:18%"><col style="width:16%"><col style="width:16%"><col style="width:17%"><col style="width:17%"><col style="width:16%"></colgroup>
+        <thead><tr><th>银行</th><th>下个账单日</th><th>剩余额度</th><th>分配应刷</th><th>到账金额</th><th>状态</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="hint">出款顺序按「下个账单日由远及近」，账单日越远，刷出来的钱垫得越久。到账金额 = 应刷 × (1 − 费率)。</div>
+    </div>
+  </div>
+
+  <!-- ===== tab3 ===== -->
+  <div class="tabpane" id="t3">
+    <div class="panel">
+      <div class="panel-title">① 分期反推 · 4 种已知条件任选一种</div>
+      <div class="form-grid three" style="margin-bottom:10px">
+        <div><label class="f">分期期数 n（月）</label><input type="number" id="fN" min="1" step="1" value="36"></div>
+        <div><label class="f">本金 P（元）</label><input type="number" id="fP" step="0.01"></div>
+        <div><label class="f">每期利息 I（元，可空）</label><input type="number" id="fI" step="0.01"></div>
+        <div><label class="f">每期月供 M（元，可空）</label><input type="number" id="fM" step="0.01"></div>
+        <div><label class="f">总还款 T（元，可空）</label><input type="number" id="fT" step="0.01"></div>
+        <div style="display:flex;align-items:flex-end;gap:8px"><button class="btn" id="btnInst">计算</button><button class="btn gray sm" id="btnSaveInst">存入分期记录</button></div>
+      </div>
+      <div class="hint">恒等式：M = P/n + I；T = M × n；TI（总利息）= I × n；P = T − TI = M × n − TI。4 种算法：① n+P+I ② n+P+M ③ n+P+T ④ n+TI+T（P = T − TI）。填了 n 和 P，再填 I / M / T 中任意一个就能反推。</div>
+      <div id="instOut"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">② 分期历史记录</div>
+      <div class="table-wrap"><table class="data min" id="tblInst">
+        <colgroup><col style="width:15%"><col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:11%"><col style="width:11%"><col style="width:13%"><col style="width:9%"><col style="width:13%"></colgroup>
+        <thead><tr><th>银行</th><th>月份</th><th>本金</th><th>期数</th><th>月供</th><th>每期利息</th><th>真实月利率</th><th>总利息</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="hint">真实月利率由现金流 IRR 二分法反推，年化 = 月利率 × 12（单利近似，不是复利年化）。</div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title"><span>③ 还款记录（账单台账）</span><span class="grow"></span>
+        <button class="btn sm" id="btnAddRepay">＋ 登记一笔</button></div>
+      <div class="table-wrap"><table class="data min" id="tblRepay">
+        <colgroup><col style="width:16%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:18%"><col style="width:9%"><col style="width:13%"></colgroup>
+        <thead><tr><th>日期</th><th>银行</th><th>还款金额</th><th>方式</th><th>备注</th><th>截图</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="repayEmpty" hidden>还没有还款记录。刷卡套现、还账之后点上面「登记一笔」记下来，年底对流水很方便。</div>
+    </div>
+  </div>
+
+  <!-- ===== tab4 ===== -->
+  <div class="tabpane" id="t4">
+    <div class="panel">
+      <div class="panel-title">🎁 信用卡优惠资讯</div>
+      <p class="hint" style="font-size:13.5px;color:#4a5c73">
+        淘宝 / 京东 / 美团 / 拼多多四平台的信用卡满减、分期免息与贴息，按平台筛选、按银行搜索，每日更新。
+        这个 tab 在本站里是独立的三级页，点下面按钮进入。
+      </p>
+      <div class="toolbar" style="margin-top:12px">
+        <a class="btn" href="credit-card-offers.html">进入优惠资讯 →</a>
+        <a class="btn gray" href="../个人中控台.html">返回中控台</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="f">公式、宽限期规则、分期恒等式与原站逐字一致 · 数据存在 hub_v1_cards / insts / repay_records</footer>
+</div>
+
+<a class="pill up" id="floatMemo" href="memo.html">🔔 备忘提醒</a>
+<a class="pill" href="credit-card-offers.html">🎁 优惠资讯</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var PAD = HUB.pad2;
+
+  /* ---------- 通用：日期 ---------- */
+  function dueTs(c){ var t = new Date((c.dueDate||'') + 'T23:59:59').getTime(); return isNaN(t)?null:t; }
+  function graceEnd(c){
+    if (!c.dueDate) return null;
+    var base = new Date(c.dueDate + 'T23:59:59'); if (isNaN(base)) return null;
+    var g = new Date(base.getTime());
+    g.setDate(g.getDate() + (Number(c.graceDays)||0));
+    g.setHours(Number(c.graceHour)||0, 0, 0, 0);
+    return g.getTime();
+  }
+  function cardState(c){
+    var now = Date.now(), ge = graceEnd(c), due = dueTs(c);
+    if (ge == null) return { cls:'st-normal', txt:'未设还款日', hours:null };
+    if (now > ge) return { cls:'st-over', txt:'已逾期 ' + Math.round((now-ge)/36e5) + ' 小时', hours:(ge-now)/36e5 };
+    if (due != null && now > due) return { cls:'st-grace', txt:'宽限期内 · 剩 ' + Math.round((ge-now)/36e5) + ' 小时', hours:(ge-now)/36e5 };
+    return { cls:'st-normal', txt:'正常 · 距还款日 ' + Math.round((due-now)/36e5) + ' 小时', hours:(due-now)/36e5 };
+  }
+  function addMonths(d, n){ var r = new Date(d.getTime()); var day = r.getDate(); r.setDate(1); r.setMonth(r.getMonth()+n); var last = new Date(r.getFullYear(), r.getMonth()+1, 0); r.setDate(Math.min(day, last.getDate())); return r; }
+  function nextBillDate(c){
+    var day = Math.min(Number(c.billDay)||1, 28);
+    var now = new Date(); var d = new Date(now.getFullYear(), now.getMonth(), day, 0, 0, 0, 0);
+    if (d.getDate() <= now.getDate()) d = addMonths(d, 1);
+    return d;
+  }
+  function money(n){ return '¥' + (Number(n)||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function pct3(v){ return (v*100).toFixed(3) + '%'; }
+
+  /* ---------- 数据 ---------- */
+  function cards(){ return HUB.get('cards', []) || []; }
+  function saveCards(l){ HUB.set('cards', l); }
+  function insts(){ return HUB.get('insts', []) || []; }
+  function repays(){ return HUB.get('repay_records', []) || []; }
+
+  /* ---------- 顶部统计 ---------- */
+  function stats(){
+    var l = cards(), bill = 0, grace = 0, over = 0;
+    l.forEach(function(c){
+      bill += Number(c.billAmount)||0;
+      var st = cardState(c);
+      if (st.cls === 'st-grace') grace++;
+      if (st.cls === 'st-over') over++;
+    });
+    $('sCards').textContent = l.length;
+    $('sBill').textContent = money(bill);
+    $('sWarn').textContent = grace + ' / ' + over;
+  }
+
+  /* ---------- tab1 列表 ---------- */
+  function renderCards(){
+    var tb = $('tblCards').querySelector('tbody');
+    var l = cards().slice().sort(function(a,b){
+      var ga = graceEnd(a), gb = graceEnd(b);
+      if (ga == null) return 1; if (gb == null) return -1;
+      return ga - gb;
+    });
+    tb.innerHTML = l.map(function(c){
+      var st = cardState(c);
+      return '<tr class="' + st.cls + '">'
+        + '<td><b>' + HUB.esc(c.bank) + '</b></td>'
+        + '<td>' + HUB.esc(c.note||'—') + '</td>'
+        + '<td class="num">' + (c.limit? (Number(c.limit)).toLocaleString('zh-CN') : '—') + '</td>'
+        + '<td class="num">' + (c.billDay||'—') + '</td>'
+        + '<td class="num">' + (c.dueDate||'—') + '</td>'
+        + '<td class="num">' + (c.graceDays||0) + ' 天 ' + (c.graceHour||0) + ' 点</td>'
+        + '<td class="num">' + (c.billAmount? money(c.billAmount) : '—') + '</td>'
+        + '<td class="num">' + (c.remainLimit!==undefined ? money(c.remainLimit) : '—') + '</td>'
+        + '<td>' + st.txt + '</td>'
+        + '<td><a class="op" data-edit="' + c.id + '">编辑</a>'
+        + '<a class="op del" data-del="' + c.id + '">删</a></td>'
+        + '</tr>';
+    }).join('');
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-edit]'), function(el){ el.onclick = function(){ editCard(el.dataset.edit); }; });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这张卡？')) return;
+        saveCards(cards().filter(function(c){ return c.id !== el.dataset.del; }));
+        renderCards(); renderPicks(); stats();
+      };
+    });
+    stats();
+  }
+
+  function editCard(id){
+    var c = cards().filter(function(x){ return x.id === id; })[0] || { id:'c'+Date.now(), bank:'', note:'', limit:0, billDay:1, dueDate:'', graceDays:3, graceHour:23, billAmount:0, remainLimit:0 };
+    var isNew = !cards().filter(function(x){ return x.id === id; }).length;
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg"><h3>' + (isNew?'新增信用卡':'编辑 · ' + HUB.esc(c.bank)) + '</h3>'
+      + '<p class="dlg-sub">账单日填 1–28 之间的日期（超过 28 按 28 算）</p>'
+      + '<div class="form-grid">'
+      + '<div><label class="f">银行</label><input id="eBank" type="text" value="' + HUB.esc(c.bank) + '"></div>'
+      + '<div><label class="f">备注</label><input id="eNote" type="text" value="' + HUB.esc(c.note||'') + '"></div>'
+      + '<div><label class="f">额度（元）</label><input id="eLimit" type="number" step="0.01" value="' + (c.limit||'') + '"></div>'
+      + '<div><label class="f">账单日（每月几号）</label><input id="eBillDay" type="number" min="1" max="28" value="' + (c.billDay||'') + '"></div>'
+      + '<div><label class="f">还款日</label><input id="eDue" type="date" value="' + (c.dueDate||'') + '"></div>'
+      + '<div><label class="f">本期账单（元）</label><input id="eBillAmt" type="number" step="0.01" value="' + (c.billAmount||'') + '"></div>'
+      + '<div><label class="f">宽限天数</label><input id="eGraceD" type="number" step="1" value="' + (c.graceDays||0) + '"></div>'
+      + '<div><label class="f">宽限到几点（整点）</label><input id="eGraceH" type="number" min="0" max="23" value="' + (c.graceHour||0) + '"></div>'
+      + '<div><label class="f">剩余可用额度（元）</label><input id="eRemain" type="number" step="0.01" value="' + (c.remainLimit!==undefined?c.remainLimit:'') + '"></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="eClose">取消</button><button class="btn" id="eSave">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#eClose').onclick = function(){ m.remove(); };
+    m.querySelector('#eSave').onclick = function(){
+      var bank = m.querySelector('#eBank').value.trim();
+      if (!bank){ HUB.toast('银行名必须填'); return; }
+      var obj = {
+        id: c.id, bank: bank, note: m.querySelector('#eNote').value.trim(),
+        limit: Number(m.querySelector('#eLimit').value)||0,
+        billDay: Number(m.querySelector('#eBillDay').value)||1,
+        dueDate: m.querySelector('#eDue').value,
+        graceDays: Number(m.querySelector('#eGraceD').value)||0,
+        graceHour: Number(m.querySelector('#eGraceH').value)||0,
+        billAmount: Number(m.querySelector('#eBillAmt').value)||0,
+        remainLimit: m.querySelector('#eRemain').value === '' ? 0 : Number(m.querySelector('#eRemain').value)
+      };
+      var l = cards();
+      var idx = -1; l.forEach(function(x,i){ if (x.id === obj.id) idx = i; });
+      if (idx >= 0) l[idx] = obj; else l.push(obj);
+      saveCards(l); m.remove();
+      renderCards(); renderPicks(); HUB.toast('已保存');
+    };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  }
+
+  $('btnAddCard').onclick = function(){ editCard('c'+Date.now()); };
+  $('btnGenMemo').onclick = function(){
+    var cardsL = cards(), memos = HUB.get('memos', []) || [], ids = {};
+    memos.forEach(function(m){ ids[m.id] = true; });
+    var n = 0;
+    cardsL.forEach(function(c){
+      var amt = Number(c.billAmount)||0; if (!(amt>0)) return;
+      var due = new Date((c.dueDate||'')+'T23:59:59'); if (isNaN(due)) return;
+      if (!(Date.now() < due.getTime())) return;
+      var ge = graceEnd(c); if (ge == null) return;
+      if (Date.now() > ge + 7*864e5) return;
+      var id = 'auto_' + c.id + '_' + c.dueDate;
+      if (ids[id]) return;
+      var remind = new Date(ge - 864e5);
+      memos.push({ id:id, auto:true, done:false,
+        text: c.bank + ' 宽限期到' + (new Date(ge).getMonth()+1) + '月' + new Date(ge).getDate() + '日' + new Date(ge).getHours() + '点',
+        time: remind.getFullYear()+'-'+PAD(remind.getMonth()+1)+'-'+PAD(remind.getDate())+'T'+PAD(remind.getHours())+':'+PAD(remind.getMinutes()),
+        created:Date.now(), important:false });
+      ids[id] = true; n++;
+    });
+    if (n) HUB.set('memos', memos);
+    HUB.toast(n ? '已生成 ' + n + ' 条宽限期提醒' : '没有需要生成的提醒');
+  };
+
+  /* ---------- tab2 还款测算 ---------- */
+  function renderPicks(){
+    var l = cards().filter(function(c){ return (Number(c.billAmount)||0) > 0; });
+    if (!l.length){ $('pickList').innerHTML = '<div class="empty">没有填了本期账单的卡片。先去「信用卡列表」把各卡本期应还金额填上。</div>'; return; }
+    $('pickList').innerHTML = '<div class="checkline" style="flex-direction:column;align-items:flex-start;gap:8px">'
+      + l.map(function(c){
+        return '<label style="width:100%;justify-content:space-between;border-bottom:1px dashed #eceff4;padding:6px 0">'
+          + '<span><input type="checkbox" data-pick="' + c.id + '" checked style="margin-right:6px">' + HUB.esc(c.bank) + '</span>'
+          + '<span class="mini">账单 ' + money(c.billAmount) + ' · 还款日 ' + (c.dueDate||'—') + '</span></label>';
+      }).join('') + '</div>';
+  }
+
+  function calcRepay(){
+    var picks = [];
+    Array.prototype.forEach.call($('pickList').querySelectorAll('[data-pick]'), function(el){
+      if (el.checked) picks.push(el.dataset.pick);
+    });
+    var l = cards().filter(function(c){ return picks.indexOf(c.id) >= 0; });
+    if (!l.length){ HUB.toast('先勾选至少一张卡'); return; }
+    var fee = (Number($('feeIn').value)||0)/1000;
+    var cash = Number($('cashIn').value)||0;
+    var billSum = l.reduce(function(s,c){ return s + (Number(c.billAmount)||0); }, 0);
+    var cashUsed = Math.min(cash, billSum);
+    var remainBill = billSum - cashUsed;
+    var totalNeed = remainBill/(1-fee);
+
+    var rows = l.map(function(c){
+      var bill = Number(c.billAmount)||0;
+      var share = billSum ? bill/billSum : 0;
+      var eff = bill - cashUsed*share;
+      var need = eff/(1-fee);
+      return { bank:c.bank, bill:bill, share:share, eff:eff, need:need };
+    });
+
+    var outCards = cards().filter(function(c){ return (Number(c.remainLimit)||0) > 0; })
+      .sort(function(a,b){ return nextBillDate(b) - nextBillDate(a); });
+    var totalLimit = outCards.reduce(function(s,c){ return s + (Number(c.remainLimit)||0); }, 0);
+    var usePct = totalLimit ? totalNeed/totalLimit : 0;
+    var outRows = outCards.map(function(c){
+      var lim = Number(c.remainLimit)||0;
+      var need = lim*usePct;
+      return { bank:c.bank, next: nextBillDate(c), limit:lim, need:need, arrive: need*(1-fee) };
+    });
+    var shortfall = totalNeed - totalLimit;
+
+    var html = '<div class="panel-title">计算结果</div><div class="kv">'
+      + '<div class="b"><div class="k">本次应还合计</div><div class="v">' + money(billSum) + '</div></div>'
+      + '<div class="b"><div class="k">现金抵扣</div><div class="v">' + money(cashUsed) + '</div></div>'
+      + '<div class="b"><div class="k">还需覆盖</div><div class="v">' + money(remainBill) + '</div></div>'
+      + '<div class="b"><div class="k">需要刷出（含手续费）</div><div class="v" style="color:#c0392b">' + money(totalNeed) + '</div></div>'
+      + '<div class="b"><div class="k">可用额度合计</div><div class="v">' + money(totalLimit) + '</div></div>'
+      + '<div class="b"><div class="k">费率占用</div><div class="v">' + pct3(fee) + '</div></div>'
+      + '</div>';
+    if (shortfall > 0) html += '<div class="hint" style="color:#c0392b;font-size:13.5px">⚠️ 额度不足，还差 ' + money(shortfall) + '</div>';
+    else if (totalLimit) html += '<div class="hint" style="color:#1a7f45;font-size:13.5px">额度够用，富余 ' + money(-shortfall) + '。</div>';
+
+    html += '<div class="table-wrap"><table class="data min"><colgroup><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup>'
+      + '<thead><tr><th>银行</th><th>账单</th><th>占比</th><th>现金分摊后</th><th>该卡应刷</th></tr></thead><tbody>'
+      + rows.map(function(r){
+        return '<tr><td>' + HUB.esc(r.bank) + '</td><td class="num">' + money(r.bill) + '</td><td class="num">' + pct3(r.share) + '</td><td class="num">' + money(r.eff) + '</td><td class="num">' + money(r.need) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+
+    $('calcOut').innerHTML = html; $('calcOut').hidden = false;
+
+    var tb = $('tblOut').querySelector('tbody');
+    if (!outRows.length){
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#a8b3c2">所有卡的剩余额度都是 0，没法套现</td></tr>';
+    } else {
+      tb.innerHTML = outRows.map(function(r){
+        var capped = r.need > r.limit + 0.001;
+        return '<tr><td>' + HUB.esc(r.bank) + '</td><td class="num">' + r.next.getFullYear() + '-' + PAD(r.next.getMonth()+1) + '-' + PAD(r.next.getDate()) + '</td>'
+          + '<td class="num">' + money(r.limit) + '</td><td class="num">' + money(r.need) + '</td>'
+          + '<td class="num">' + money(r.arrive) + '</td>'
+          + '<td>' + (capped ? '<span class="tag hot">额度不够</span>' : '<span class="tag ok">可刷</span>') + '</td></tr>';
+      }).join('');
+    }
+    stats();
+  }
+  $('btnCalc').onclick = calcRepay;
+
+  /* ---------- tab3 分期 ---------- */
+  function irrMonthly(P, n, M){
+    if (M*n <= P) return 0;
+    function f(i){ return M*(1-Math.pow(1+i,-n))/i - P; }
+    var lo = 1e-7, hi = 1;
+    if (f(hi) > 0){ var k = 0; while (f(hi) > 0){ hi *= 2; if (++k >= 40 || hi > 1000) break; } }
+    for (var it = 0; it < 200; it++){
+      var mid = (lo+hi)/2;
+      if (f(mid) > 0) lo = mid; else hi = mid;
+    }
+    return (lo+hi)/2;
+  }
+
+  function calcInst(){
+    var n = Number($('fN').value)||0;
+    var P = Number($('fP').value)||0;
+    var I = $('fI').value === '' ? null : Number($('fI').value);
+    var M = $('fM').value === '' ? null : Number($('fM').value);
+    var T = $('fT').value === '' ? null : Number($('fT').value);
+    if (n <= 0){ HUB.toast('期数要大于 0'); return null; }
+
+    var ways = [];
+    if (I != null && I >= 0) ways.push('① n+P+I');
+    if (M != null && M > 0) ways.push('② n+P+M');
+    if (T != null && T > 0) ways.push('③ n+P+T');
+    if (ways.length === 0 || P <= 0){ HUB.toast('请至少填 P 和 I / M / T 里的一个'); return null; }
+
+    var out = [];
+    ways.forEach(function(w){
+      var mM, mI, mT, mTI, mP;
+      if (w.indexOf('①') === 0){ mI = I; mM = P/n + I; mT = mM*n; mTI = I*n; mP = P; }
+      else if (w.indexOf('②') === 0){ mM = M; mI = M - P/n; mT = M*n; mTI = mI*n; mP = P; }
+      else { mT = T; mM = T/n; mI = mM - P/n; mTI = mI*n; mP = T - mTI; }
+      var irr = irrMonthly(mP, n, mM);
+      var surface = mP ? (mM - mP/n)/mP : 0;
+      out.push({ way:w, n:n, P:mP, I:mI, M:mM, T:mT, TI:mTI, irr:irr, surface:surface, annual:irr*12 });
+    });
+
+    var html = out.map(function(r){
+      return '<div class="panel" style="margin-top:12px;background:#f9fbff">'
+        + '<div class="panel-title">' + r.way + ' 反推结果</div>'
+        + '<div class="kv">'
+        + '<div class="b"><div class="k">本金 P</div><div class="v">' + money(r.P) + '</div></div>'
+        + '<div class="b"><div class="k">每期利息 I</div><div class="v">' + money(r.I) + '</div></div>'
+        + '<div class="b"><div class="k">月供 M</div><div class="v">' + money(r.M) + '</div></div>'
+        + '<div class="b"><div class="k">总还款 T</div><div class="v">' + money(r.T) + '</div></div>'
+        + '<div class="b"><div class="k">总利息 TI</div><div class="v" style="color:#c0392b">' + money(r.TI) + '</div></div>'
+        + '<div class="b"><div class="k">表面月费率</div><div class="v">' + pct3(r.surface) + '</div></div>'
+        + '<div class="b"><div class="k">真实月利率（IRR）</div><div class="v" style="color:#1a6ee0">' + pct3(r.irr) + '</div></div>'
+        + '<div class="b"><div class="k">年化（×12 单利）</div><div class="v" style="color:#c0392b">' + pct3(r.annual) + '</div></div>'
+        + '</div></div>';
+    }).join('');
+    $('instOut').innerHTML = html;
+    window.__lastInst = out[0];
+    return out[0];
+  }
+  $('btnInst').onclick = calcInst;
+
+  $('btnSaveInst').onclick = function(){
+    var r = calcInst(); if (!r) return;
+    var bank = prompt('这是哪家银行的分期？'); if (!bank) return;
+    var month = prompt('哪个月份登记？（如 2026-11）', HUB.todayStr().slice(0,7));
+    var l = insts();
+    l.unshift({ id:'i'+Date.now(), bank:bank.trim(), month:(month||'').trim(), n:Math.round(r.n),
+      P:Math.round(r.P*100)/100, M:Math.round(r.M*100)/100, I:Math.round(r.I*100)/100,
+      totalInt:Math.round(r.TI*100)/100, irr:r.irr });
+    HUB.set('insts', l); renderInst(); HUB.toast('已存入分期记录');
+  };
+
+  function renderInst(){
+    var tb = $('tblInst').querySelector('tbody');
+    var l = insts();
+    if (!l.length){ tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#a8b3c2">还没有分期记录</td></tr>'; return; }
+    tb.innerHTML = l.map(function(r){
+      return '<tr><td>' + HUB.esc(r.bank) + '</td><td>' + HUB.esc(r.month||'—') + '</td>'
+        + '<td class="num">' + money(r.P) + '</td><td class="num">' + (r.n||'—') + '</td>'
+        + '<td class="num">' + money(r.M) + '</td><td class="num">' + money(r.I) + '</td>'
+        + '<td class="num" style="color:#1a6ee0">' + (r.irr? pct3(r.irr) : '—') + '</td>'
+        + '<td class="num" style="color:#c0392b">' + money(r.totalInt) + '</td>'
+        + '<td><a data-delin="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:12.5px">删除</a></td></tr>';
+    }).join('');
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-delin]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这条分期记录？')) return;
+        HUB.set('insts', insts().filter(function(x){ return x.id !== el.dataset.delin; }));
+        renderInst();
+      };
+    });
+  }
+
+  /* ---------- 还款记录 ---------- */
+  function renderRepay(){
+    var tb = $('tblRepay').querySelector('tbody');
+    var l = repays();
+    $('repayEmpty').hidden = !!l.length;
+    if (!l.length){ tb.innerHTML = ''; return; }
+    tb.innerHTML = l.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).map(function(r){
+      return '<tr><td>' + HUB.esc(r.date||'') + '</td><td>' + HUB.esc(r.bank||'') + '</td>'
+        + '<td class="num">' + money(r.amount) + '</td><td>' + HUB.esc(r.way||'—') + '</td>'
+        + '<td>' + HUB.esc(r.note||'—') + '</td>'
+        + '<td>' + (r.img ? '<img src="' + r.img + '" style="max-width:56px;border-radius:5px;cursor:pointer" data-img="' + r.id + '">' : '—') + '</td>'
+        + '<td><a data-delrep="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:12.5px">删除</a></td></tr>';
+    }).join('');
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-delrep]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这笔还款记录？')) return;
+        HUB.set('repay_records', repays().filter(function(x){ return x.id !== el.dataset.delrep; }));
+        renderRepay();
+      };
+    });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-img]'), function(el){
+      el.onclick = function(){
+        var m = document.createElement('div'); m.className = 'mask';
+        m.innerHTML = '<div class="dlg" style="max-width:720px;background:transparent;box-shadow:none"><img src="' + el.src + '" style="width:100%;border-radius:10px"></div>';
+        document.body.appendChild(m); m.onclick = function(){ m.remove(); };
+      };
+    });
+  }
+
+  $('btnAddRepay').onclick = function(){
+    var m = document.createElement('div'); m.className = 'mask';
+    var banks = cards().map(function(c){ return '<option>' + HUB.esc(c.bank) + '</option>'; }).join('');
+    m.innerHTML = '<div class="dlg"><h3>登记一笔还款</h3><p class="dlg-sub">账单截图可以直接选图压缩后存进本机数据</p>'
+      + '<div class="form-grid">'
+      + '<div><label class="f">日期</label><input id="rDate" type="date" value="' + HUB.todayStr() + '"></div>'
+      + '<div><label class="f">银行</label><select id="rBank">' + banks + '<option>其他</option></select></div>'
+      + '<div><label class="f">还款金额</label><input id="rAmt" type="number" step="0.01"></div>'
+      + '<div><label class="f">方式</label><select id="rWay"><option>现金还款</option><option>套现转还</option><option>分期还款</option><option>他行转账</option></select></div>'
+      + '<div style="grid-column:1/-1"><label class="f">备注</label><input id="rNote" type="text"></div>'
+      + '<div style="grid-column:1/-1"><label class="f">账单截图（可空）</label><input id="rImg" type="file" accept="image/*"></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="rClose">取消</button><button class="btn" id="rSave">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#rClose').onclick = function(){ m.remove(); };
+    m.querySelector('#rSave').onclick = function(){
+      var amt = Number(m.querySelector('#rAmt').value)||0;
+      if (!amt){ HUB.toast('金额要大于 0'); return; }
+      var rec = { id:'r'+Date.now(), date:m.querySelector('#rDate').value, bank:m.querySelector('#rBank').value,
+        amount:amt, way:m.querySelector('#rWay').value, note:m.querySelector('#rNote').value.trim(), img:'' };
+      var f = m.querySelector('#rImg').files[0];
+      var done = function(){
+        var l = repays(); l.unshift(rec); HUB.set('repay_records', l); m.remove(); renderRepay(); HUB.toast('已登记');
+      };
+      if (f){
+        var img = new Image(), fr = new FileReader();
+        fr.onload = function(){ img.src = fr.result; };
+        img.onload = function(){
+          var sc = Math.min(1, 720/Math.max(img.width, img.height));
+          var cv = document.createElement('canvas');
+          cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          var data = cv.toDataURL('image/jpeg', 0.72);
+          if (data.length > 240000){
+            var cv2 = document.createElement('canvas');
+            var sc2 = Math.min(1, 560/Math.max(img.width, img.height));
+            cv2.width = Math.round(img.width*sc2); cv2.height = Math.round(img.height*sc2);
+            cv2.getContext('2d').drawImage(img, 0, 0, cv2.width, cv2.height);
+            data = cv2.toDataURL('image/jpeg', 0.6);
+          }
+          rec.img = data; done();
+        };
+        fr.readAsDataURL(f);
+      } else done();
+    };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  };
+
+  /* ---------- tabs ---------- */
+  Array.prototype.forEach.call(document.querySelectorAll('.tabbtn'), function(b){
+    b.onclick = function(){
+      Array.prototype.forEach.call(document.querySelectorAll('.tabbtn'), function(x){ x.classList.remove('on'); });
+      Array.prototype.forEach.call(document.querySelectorAll('.tabpane'), function(x){ x.classList.remove('on'); });
+      b.classList.add('on'); document.getElementById(b.dataset.tab).classList.add('on');
+      if (b.dataset.tab === 't4') HUB.toast('优惠资讯是独立三级页，点下面按钮进入');
+    };
+  });
+
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ renderCards(); renderPicks(); renderInst(); renderRepay(); });
+
+  renderCards(); renderPicks(); renderInst(); renderRepay();
+  stats();
+})();
+</script>
+</body>
+</html>
