@@ -36,9 +36,10 @@
         <label class="f">提醒时间（可留空）</label>
         <input type="datetime-local" id="inTime">
       </div>
-      <div style="display:flex;align-items:flex-end;gap:8px">
+      <div style="display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap">
         <button class="btn" id="btnAdd">添加</button>
         <button class="btn gray" id="btnGenAuto" title="按信用卡账单重新生成宽限期提醒">重新生成自动提醒</button>
+        <button class="btn gray" id="btnImport" title="导入备份 JSON，重复的自动跳过">导入 JSON（去重）</button>
       </div>
     </div>
   </div>
@@ -255,6 +256,57 @@
   };
   $('inText').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey||e.metaKey)) $('btnAdd').click(); });
   $('btnGenAuto').onclick = function(){ genAuto(false); };
+
+  /* 导入备份 JSON：按 id 与「正文+时间」双重去重，只补缺不覆盖 */
+  function normText(s){ return String(s || '').replace(/\s+/g, '').trim(); }
+  function keyOf(m){ return normText(m.text) + '|' + String(m.time || ''); }
+  function importJson(raw){
+    var j = JSON.parse(raw);
+    var arr = Array.isArray(j) ? j : (j.memos || j.items || j.list || j.data);
+    if (!Array.isArray(arr)) throw new Error('没找到备忘数组');
+    var list = memos();
+    var ids = {}, keys = {};
+    list.forEach(function(m){ ids[m.id] = true; keys[keyOf(m)] = true; });
+    var added = 0, skipped = 0;
+    arr.forEach(function(m){
+      if (!m || !m.text){ skipped++; return; }
+      var item = {
+        id: m.id || ('m' + (Number(m.created) || Date.now())),
+        done: !!m.done,
+        text: String(m.text),
+        time: m.time || '',
+        created: Number(m.created) || Date.now(),
+        important: false
+      };
+      if (m.auto) item.auto = true;
+      if (ids[item.id] || keys[keyOf(item)]){ skipped++; return; }
+      ids[item.id] = true; keys[keyOf(item)] = true;
+      list.push(item); added++;
+    });
+    if (added){ save(markImportant()); }
+    render();
+    HUB.toast('导入完成：新增 ' + added + ' 条，跳过重复 ' + skipped + ' 条');
+  }
+  $('btnImport').onclick = function(){
+    var inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.style.display = 'none';
+    document.body.appendChild(inp);
+    inp.onchange = function(){
+      var f = inp.files && inp.files[0];
+      if (!f){ inp.remove(); return; }
+      var fr = new FileReader();
+      fr.onload = function(){
+        try { importJson(String(fr.result)); }
+        catch (e) { HUB.toast('导入失败：' + e.message); }
+        inp.remove();
+      };
+      fr.readAsText(f, 'utf-8');
+    };
+    inp.click();
+  };
+
   $('inSearch').oninput = render;
   Array.prototype.forEach.call(document.querySelectorAll('input[name=fl]'), function(r){ r.onchange = render; });
   $('btnSync').onclick = HUB.openSyncDialog;
