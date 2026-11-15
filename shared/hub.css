@@ -18,10 +18,10 @@ body{
 .wrap{max-width:1100px;margin:0 auto;padding:18px 16px 64px;}
 
 /* ---------- 顶部 ---------- */
-.hd{position:relative;text-align:center;padding:22px 0 4px;}
+.hd{position:relative;text-align:center;padding:12px 0 4px;}
 .hd h1{font-size:23px;color:#1a3c6e;letter-spacing:1px;font-weight:700;}
 .hd .sub{font-size:13px;color:#8a94a6;margin-top:7px;line-height:1.6;}
-.backbar{position:absolute;left:0;top:18px;display:flex;flex-wrap:wrap;gap:8px;}
+.backbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 6px;}
 .back{
   position:static;display:inline-flex;align-items:center;gap:4px;
   font-size:13px;color:#1a3c6e;text-decoration:none;background:#fff;
@@ -153,9 +153,9 @@ footer.f{text-align:center;margin-top:26px;font-size:12px;color:#a5aebd;line-hei
 /* ---------- 窄屏 ---------- */
 @media (max-width:640px){
   .wrap{padding:14px 12px 70px;}
-  .hd{padding-top:46px;}
+  .hd{padding-top:10px;}
   .hd h1{font-size:20px;}
-  .backbar{position:static;margin-bottom:10px;}
+  .backbar{margin-bottom:8px;}
   .form-grid,.form-grid.three{grid-template-columns:1fr;}
   .stat{grid-template-columns:1fr 1fr;}
   .stat .cell:last-child{grid-column:1 / -1;}
