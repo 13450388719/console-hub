@@ -62,6 +62,7 @@ window.HUB = (function () {
       DIRTY[key] = true;
       schedulePush();
       try { window.dispatchEvent(new CustomEvent('hub:local', { detail:{key:key} })); } catch(e){}
+      maybeBackup(key);
     }
   }
   function get(key, fallback){
@@ -306,6 +307,110 @@ window.HUB = (function () {
     dlg.addEventListener('click', function(e){ if (e.target === dlg) dlg.remove(); });
   }
 
+  /* ---------------- 云端自动备份（Supabase 两行：bak_memo / bak_auto） ---------------- */
+  var BAK_MEMO = 'bak_memo', BAK_AUTO = 'bak_auto';
+  var MEMO_KEEP_MS = 3 * 24 * 3600 * 1000, MEMO_SLOTS = 90, AUTO_SLOTS = 7;
+
+  function rowGet(id){
+    if (cfg.mode !== 'supabase' || !cfg.url) return Promise.resolve(null);
+    var u = cfg.url.replace(/\/+$/,'') + '/rest/v1/hub_state?id=eq.' + encodeURIComponent(id) + '&select=payload';
+    return fetch(u, { headers: headers(), cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){ return (rows && rows[0] && rows[0].payload) ? rows[0].payload : null; });
+  }
+  function rowPut(id, payload){
+    if (cfg.mode !== 'supabase' || !cfg.url) return Promise.reject(new Error('还没开启 Supabase 同步'));
+    var h = headers(); h['Prefer'] = 'resolution=merge-duplicates';
+    return fetch(cfg.url.replace(/\/+$/,'') + '/rest/v1/hub_state', {
+      method:'POST', headers:h,
+      body: JSON.stringify([{ id:id, payload:payload, updated_at:new Date().toISOString() }])
+    }).then(function(r){ if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'').slice(0,120)); }); });
+  }
+
+  function bkMeta(){ try { return JSON.parse(rawGet(LS+'bakmeta')||'{}') || {}; } catch(e){ return {}; } }
+  function saveBkMeta(m){ rawSet(LS+'bakmeta', JSON.stringify(m)); }
+
+  function dataOf(keys){
+    var data = {};
+    keys.forEach(function(k){ var v = read(k); if (v != null) data[k] = { t:(META[k]||0), v:v }; });
+    return data;
+  }
+
+  /* 备忘：有修改就备，同一小时最多一份，保留 3 天 */
+  function backupMemoRing(){
+    if (cfg.mode !== 'supabase' || !cfg.url) return Promise.reject(new Error('还没开启 Supabase 同步'));
+    return rowGet(BAK_MEMO).catch(function(){ return null; }).then(function(p){
+      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'memo', keepDays:3, items:[] };
+      var now = Date.now(), hour = nowStamp().slice(0,13);
+      ring.items = (ring.items || []).filter(function(x){
+        if (!x || !x.at) return false;
+        var t = Date.parse(x.at);
+        if (isNaN(t)) return false;
+        if (now - t > MEMO_KEEP_MS) return false;   /* 超过 3 天丢掉 */
+        return x.hour !== hour;                     /* 同一小时只留一份 */
+      });
+      ring.items.push({ at:new Date().toISOString(), hour:hour, label:nowStamp(), data:dataOf(['memos']) });
+      ring.items.sort(function(a,b){ return Date.parse(b.at) - Date.parse(a.at); });
+      ring.items = ring.items.slice(0, MEMO_SLOTS);
+      return rowPut(BAK_MEMO, ring).then(function(){ return ring.items.length; });
+    });
+  }
+
+  /* 其他数据：每天一份，保留 7 天 */
+  function backupDailyRing(){
+    if (cfg.mode !== 'supabase' || !cfg.url) return Promise.reject(new Error('还没开启 Supabase 同步'));
+    return rowGet(BAK_AUTO).catch(function(){ return null; }).then(function(p){
+      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'auto', keepDays:7, items:[] };
+      var day = todayStr();
+      var keys = KEYS.filter(function(k){ return k !== 'memos'; });
+      ring.items = (ring.items || []).filter(function(x){ return x && x.day && x.day !== day; });
+      ring.items.push({ at:new Date().toISOString(), day:day, label:nowStamp(), data:dataOf(keys) });
+      ring.items.sort(function(a,b){ return Date.parse(b.at) - Date.parse(a.at); });
+      ring.items = ring.items.slice(0, AUTO_SLOTS);
+      return rowPut(BAK_AUTO, ring).then(function(){ return ring.items.length; });
+    });
+  }
+
+  /* 写入时自动触发：备忘走小时闸门，其他走天闸门 */
+  function maybeBackup(key){
+    if (cfg.mode !== 'supabase' || !cfg.url) return;
+    var m = bkMeta();
+    if (key === 'memos'){
+      var hour = nowStamp().slice(0,13);
+      if (m.memoHour === hour) return;
+      m.memoHour = hour; saveBkMeta(m);
+      backupMemoRing().catch(function(){ m.memoHour = ''; saveBkMeta(m); });
+    } else {
+      var day = todayStr();
+      if (m.autoDay === day) return;
+      m.autoDay = day; saveBkMeta(m);
+      backupDailyRing().catch(function(){ m.autoDay = ''; saveBkMeta(m); });
+    }
+  }
+
+  function cloudBackups(kind){
+    var id = kind === 'memo' ? BAK_MEMO : BAK_AUTO;
+    return rowGet(id).then(function(p){ return (p && Array.isArray(p.items)) ? p.items : []; });
+  }
+
+  function restoreBackup(kind, at){
+    var id = kind === 'memo' ? BAK_MEMO : BAK_AUTO;
+    return rowGet(id).then(function(p){
+      var e = ((p && p.items) || []).filter(function(x){ return x.at === at; })[0];
+      if (!e || !e.data) throw new Error('没找到这份备份');
+      var keys = Object.keys(e.data), n = 0;
+      keys.forEach(function(k){
+        if (KEYS.indexOf(k) < 0) return;
+        write(k, e.data[k].v, { silent:true, skipBackup:true });
+        META[k] = e.data[k].t || Date.now(); n++;
+      });
+      saveMeta();
+      if (cloudOn()) { KEYS.forEach(function(k){ DIRTY[k] = true; }); schedulePush(); }
+      try { window.dispatchEvent(new CustomEvent('hub:remote', { detail:{keys:keys} })); } catch(err){}
+      return n;
+    });
+  }
+
   /* ---------------- 整份备份 ---------------- */
   function exportDoc(){
     return {
@@ -354,7 +459,7 @@ window.HUB = (function () {
     loadConfig();
     if (rawGet(LS+'init') == null) seedInit();
     loadMeta();
-    if (cloudOn()) setTimeout(function(){ pull(false); }, 300);
+    if (cloudOn()) setTimeout(function(){ pull(false); maybeBackup('__boot'); }, 300);
     else setStatus('ok','💾 本机存储 · 点击开启同步');
     setInterval(function(){
       if (!cloudOn()) return;
@@ -387,6 +492,10 @@ window.HUB = (function () {
     onRemote: function(cb){ window.addEventListener('hub:remote', function(e){ cb(e.detail.keys); }); },
     onLocal: function(cb){ window.addEventListener('hub:local', function(e){ cb(e.detail.key); }); },
     storeOk: function(){ return HAS_LS; },
-    shapeName: function(k){ return NAME[k] || k; }
+    shapeName: function(k){ return NAME[k] || k; },
+    cloudBackups: cloudBackups,
+    restoreBackup: restoreBackup,
+    backupNow: function(kind){ return kind === 'memo' ? backupMemoRing() : backupDailyRing(); },
+    backupMarks: bkMeta
   };
 })();

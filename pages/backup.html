@@ -73,7 +73,24 @@ textarea.mono{font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.
     <div id="snapList" style="margin-top:12px"></div>
   </div>
 
-  <div class="footer-f">备份结构、counts 统计口径与原站一致 · 快照只存本机，不占云端</div>
+  <div class="panel">
+    <div class="panel-title"><span>⑤ 云端自动备份（Supabase）</span><span class="grow"></span><span class="hint" style="margin:0" id="cloudState">读取中…</span></div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#4a5c73">
+      <div>① 备忘：<b>有改动就备</b>，同一小时最多一份，保留 3 天</div>
+      <div>② 其他数据：<b>每天一份</b>，保留 7 天</div>
+    </div>
+    <div class="hint">两套备份写在云端 Supabase 的 <code>bak_memo</code> / <code>bak_auto</code> 两行里，换设备也能恢复。网页关着时无法定时，下次打开会用当天数据补一份。</div>
+    <div class="toolbar" style="margin-top:12px">
+      <button class="btn ghost" id="bakNowMemo">立刻备一份备忘</button>
+      <button class="btn ghost" id="bakNowAll">立刻备一份全量</button>
+    </div>
+    <div class="panel-title" style="margin-top:14px"><span style="font-size:13px">备忘快照（3 天）</span></div>
+    <div id="memoList" style="margin-top:8px"></div>
+    <div class="panel-title" style="margin-top:14px"><span style="font-size:13px">每日全量（7 天）</span></div>
+    <div id="autoList" style="margin-top:8px"></div>
+  </div>
+
+  <div class="footer-f">备份结构、counts 统计口径与原站一致 · 本机快照最多 5 份 · 云端备忘 3 天 / 全量 7 天</div>
 </div>
 
 <script src="../data/seed.js?v=20261116g"></script>
@@ -243,10 +260,81 @@ textarea.mono{font-family:Consolas,Menlo,monospace;font-size:12px;line-height:1.
     if (!(s.length && s[0].date === HUB.todayStr())) markBackedUp();
   }
 
+  /* ---- 云端自动备份 ---- */
+  function cntIn(data, key){
+    var rec = data && data[key]; if (!rec || !rec.v) return 0;
+    var v = rec.v;
+    if (Array.isArray(v)) return v.length;
+    if (v && Array.isArray(v.items)) return v.items.length;
+    if (typeof v === 'object') return Object.keys(v).length;
+    return 1;
+  }
+  function sizeOf(o){ return (JSON.stringify(o).length/1024).toFixed(1) + ' KB'; }
+  function renderCloud(){
+    if (!HUB.cloudOn()){
+      $('cloudState').textContent = '未开启同步';
+      $('memoList').innerHTML = '<div class="empty">先在「同步设置」里选 Supabase 并填 URL / key，备份才会写到云端</div>';
+      $('autoList').innerHTML = '';
+      return;
+    }
+    var memoN = 0, autoN = 0;
+    function state(){
+      $('cloudState').textContent = '备忘 ' + memoN + ' 份 · 全量 ' + autoN + ' 天';
+    }
+    HUB.cloudBackups('memo').then(function(items){
+      memoN = items.length; state();
+      $('memoList').innerHTML = items.length ? items.map(function(x){
+        return '<div class="scard" style="margin-top:8px"><div class="row1"><div class="nm">' + HUB.esc(x.label || x.at) + '</div>'
+          + '<div class="x"><a data-restore-memo="' + HUB.esc(x.at) + '">恢复这一份</a></div></div>'
+          + '<div class="src">' + cntIn(x.data,'memos') + ' 条备忘 · ' + sizeOf(x.data) + '</div></div>';
+      }).join('') : '<div class="empty">还没有备忘快照（改一次备忘就会自动备）</div>';
+      Array.prototype.forEach.call($('memoList').querySelectorAll('[data-restore-memo]'), function(el){
+        el.onclick = function(){ doRestore('memo', el.dataset.restoreMemo, el); };
+      });
+    }).catch(function(e){
+      $('memoList').innerHTML = '<div class="empty">读取失败：' + HUB.esc(e.message) + '</div>';
+    });
+    HUB.cloudBackups('auto').then(function(items){
+      var total = HUB.KEYS.filter(function(k){ return k !== 'memos'; }).length;
+      autoN = items.length; state();
+      $('autoList').innerHTML = items.length ? items.map(function(x){
+        return '<div class="scard" style="margin-top:8px"><div class="row1"><div class="nm">' + HUB.esc(x.day || x.at) + ' · ' + HUB.esc((x.label||'').slice(11)) + '</div>'
+          + '<div class="x"><a data-restore-auto="' + HUB.esc(x.at) + '">恢复这一份</a></div></div>'
+          + '<div class="src">' + Object.keys(x.data||{}).length + ' 类数据 · ' + sizeOf(x.data||{}) + '</div></div>';
+      }).join('') : '<div class="empty">还没有每日快照（每天第一次打开中控台会自动备）</div>';
+      Array.prototype.forEach.call($('autoList').querySelectorAll('[data-restore-auto]'), function(el){
+        el.onclick = function(){ doRestore('auto', el.dataset.restoreAuto, el); };
+      });
+    }).catch(function(e){
+      $('autoList').innerHTML = '<div class="empty">读取失败：' + HUB.esc(e.message) + '</div>';
+    });
+  }
+  function doRestore(kind, at, el){
+    var tip = kind === 'memo' ? '用这份备忘快照覆盖当前备忘？（其他数据不动）' : '用这份全量快照覆盖当前所有数据？';
+    if (!confirm(tip)) return;
+    if (el) el.textContent = '恢复中…';
+    HUB.restoreBackup(kind, at).then(function(n){
+      HUB.toast('已恢复 ' + n + ' 类数据，即将刷新');
+      setTimeout(function(){ location.reload(); }, 900);
+    }).catch(function(e){
+      HUB.toast('恢复失败：' + e.message);
+      if (el) el.textContent = '恢复这一份';
+    });
+  }
+  $('bakNowMemo').onclick = function(){
+    HUB.backupNow('memo').then(function(n){ HUB.toast('已备份，现有 ' + n + ' 份备忘快照'); renderCloud(); })
+      .catch(function(e){ HUB.toast('备份失败：' + e.message); });
+  };
+  $('bakNowAll').onclick = function(){
+    HUB.backupNow('auto').then(function(n){ HUB.toast('已备份，现有 ' + n + ' 份全量快照'); renderCloud(); })
+      .catch(function(e){ HUB.toast('备份失败：' + e.message); });
+  };
+
   $('btnSync').onclick = HUB.openSyncDialog;
   HUB.onRemote(function(){ render(); });
   render();
   renderSnaps();
+  renderCloud();
 })();
 </script>
 </body>
