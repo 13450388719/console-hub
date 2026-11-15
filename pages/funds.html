@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>指数 / 基金观察</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+table.data.min{min-width:900px}
+.pos{font-size:11.5px;color:#1a6ee0;cursor:pointer;margin-left:6px;user-select:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>📈 指数 / 基金观察</h1>
+    <div class="sub">点位与净值 · 目标到点提醒 · PE/PB 估值分位 · 成交拥挤度</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">观察标的</div><div class="v" id="sN">0</div></div>
+    <div class="cell"><div class="k">已到目标价</div><div class="v" id="sHit">0</div></div>
+    <div class="cell"><div class="k">设了目标</div><div class="v" id="sTarget">0</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜名称 / 代码 / 备注…" style="flex:1;min-width:170px">
+      <select id="sortSel" style="max-width:170px">
+        <option value="custom">自定义顺序</option>
+        <option value="gap">按距目标幅度</option>
+        <option value="name">按名称</option>
+      </select>
+      <button class="btn ghost sm" id="btnCheck">检查到点 → 生成备忘</button>
+      <button class="btn ghost sm" id="btnRefresh">刷新行情</button>
+      <button class="btn sm" id="btnAdd">＋ 新增标的</button>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="panel">
+    <div class="table-wrap"><table class="data min" id="tbl">
+      <colgroup><col style="width:26%"><col style="width:8%"><col style="width:12%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:15%"><col style="width:10%"></colgroup>
+      <thead><tr><th>名称 / 代码</th><th>类型</th><th>现价 / 净值</th><th>涨跌</th><th>目标</th><th>距目标</th><th>估值 / 拥挤度</th><th>操作</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="hint">指数显示 2 位小数、基金显示 4 位小数；距目标 =（现价 − 目标）/ 目标 × 100%。到点判断：下行 = 现价 ≤ 目标，上行 = 现价 ≥ 目标，只提醒一次。</div>
+  </div>
+
+  <div class="footer-f">行情与原站同源（东方财富 / 中证官网 / 蛋卷估值）· 静态页直连行情会被浏览器 CORS 拦住，可「改价」手填后本机计算</div>
+</div>
+
+<a class="pill" href="memo.html">🔔 备忘提醒</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var curQ = '', curSort = 'custom';
+
+  function data(){ return HUB.get('funds', {list:[], quotes:{}, customOrder:[], sort:{key:'custom',dir:'asc'}}) || {list:[],quotes:{}}; }
+  function save(d){ HUB.set('funds', d); }
+  function items(){ return data().list || []; }
+
+  function quoteOf(x, d){
+    d = d || data(); var q = d.quotes || {};
+    if (x.type === 'index' && x.indexCode && q[x.indexCode]) return q[x.indexCode];
+    return q[x.code] || null;
+  }
+  function priceOf(x, d){
+    var q = quoteOf(x, d), v = x.lastPrice;
+    if (q){ if (x.type === 'index'){ if (q.price != null) v = q.price; } else if (q.nav != null) v = q.nav; }
+    return v == null || v === '' ? null : Number(v);
+  }
+  function dp(x, v){ if (v == null) return '—'; return x.type === 'index' ? Number(v).toFixed(2) : Number(v).toFixed(4); }
+  function gapOf(x, d){
+    var p = priceOf(x, d), t = Number(x.target);
+    if (!t || p == null) return null;
+    return (p - t)/t*100;
+  }
+  function gradeCls(p){ if (p == null) return ''; if (p >= 90) return 'g-up'; if (p >= 80) return 'g-mid'; if (p < 40) return 'g-low'; return ''; }
+
+  function crowdOf(x){
+    if (!x.indexCode) return null;
+    var c = HUB.get('news_crowd', {}) || {};
+    var days = Object.keys(c).filter(function(k){ return c[k] && c[k][x.indexCode] != null; }).sort();
+    if (days.length < 2) return null;
+    var today = c[days[days.length-1]][x.indexCode];
+    var prev = days.slice(0, -1);
+    var avg = prev.reduce(function(s,k){ return s + c[k][x.indexCode]; }, 0)/prev.length;
+    if (!avg) return null;
+    return { ratio: today/avg };
+  }
+
+  function render(){
+    var d = data(), l = items(), order = d.customOrder || [];
+    var shown = l.filter(function(x){
+      if (!curQ) return true;
+      return (x.name + ' ' + x.code + ' ' + (x.note||'') + ' ' + (x.trackName||'')).toLowerCase().indexOf(curQ) >= 0;
+    }).slice().sort(function(a,b){
+      if (curSort === 'name') return String(a.name||'').localeCompare(String(b.name||''), 'zh-CN');
+      if (curSort === 'gap'){
+        var ga = gapOf(a,d), gb = gapOf(b,d);
+        if (ga == null && gb == null) return 0;
+        if (ga == null) return 1; if (gb == null) return -1;
+        return ga - gb;
+      }
+      var ia = order.indexOf(a.code), ib = order.indexOf(b.code);
+      if (ia < 0) ia = 99999; if (ib < 0) ib = 99999;
+      return ia - ib;
+    });
+
+    var hit = 0, tgt = 0;
+    l.forEach(function(x){
+      if (Number(x.target)) tgt++;
+      var g = gapOf(x, d);
+      if (g == null) return;
+      if (x.alertDir === 'up' ? g >= 0 : g <= 0) hit++;
+    });
+    $('sN').textContent = l.length; $('sHit').textContent = hit; $('sTarget').textContent = tgt;
+    $('hint').textContent = '行情时间 ' + (d.updatedAt||'—') + ' · 估值时间 ' + (d.valuationAt||'—') + ' · 来源 ' + (d.source||'—');
+
+    var tb = $('tbl').querySelector('tbody');
+    if (!shown.length){ tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#a8b3c2">没有标的，点右上「新增标的」加一个</td></tr>'; return; }
+
+    tb.innerHTML = shown.map(function(x){
+      var q = quoteOf(x, d), p = priceOf(x, d), g = gapOf(x, d);
+      var chg = (q && q.change != null) ? Number(q.change) : null;
+      var tags = [];
+      if (q && x.show && x.show.indexOf('pe') >= 0 && q.pePct != null)
+        tags.push('<span class="tag ' + gradeCls(q.pePct*100) + '">PE ' + q.pe + ' · ' + (q.pePct*100).toFixed(0) + '%</span>');
+      if (q && x.show && x.show.indexOf('pb') >= 0 && q.pbPct != null)
+        tags.push('<span class="tag ' + gradeCls(q.pbPct*100) + '">PB ' + q.pb + ' · ' + (q.pbPct*100).toFixed(0) + '%</span>');
+      var cw = crowdOf(x);
+      if (cw) tags.push('<span class="tag ' + (cw.ratio>2?'hot':(cw.ratio>1.3?'pin':'')) + '">拥挤 ' + cw.ratio.toFixed(2) + '×</span>');
+      if (!tags.length) tags.push('<span style="color:#b8c2ce">—</span>');
+
+      return '<tr><td><b>' + HUB.esc(x.name) + '</b><br><span style="font-size:11.5px;color:#93a1b4">' + HUB.esc(x.code) + (x.note?' · '+HUB.esc(x.note):'') + '</span></td>'
+        + '<td>' + (x.type === 'index' ? '<span class="tag">指数</span>' : '<span class="tag">基金</span>') + '</td>'
+        + '<td class="num">' + dp(x, p) + (curSort==='custom' ? '<span class="pos" data-up="' + HUB.esc(x.code) + '">↑</span><span class="pos" data-down="' + HUB.esc(x.code) + '">↓</span>' : '') + '</td>'
+        + '<td class="num">' + (chg == null ? '—' : '<span class="' + (chg>0?'up':(chg<0?'down':'nd')) + '">' + (chg>0?'+':'') + chg + '%</span>') + '</td>'
+        + '<td class="num">' + (x.target ? dp(x, x.target) + ' ' + (x.alertDir==='up'?'↑':'↓') : '—') + '</td>'
+        + '<td class="num">' + (g == null ? '—' : '<span class="' + (g<0?'down':'up') + '">' + g.toFixed(2) + '%</span>') + '</td>'
+        + '<td>' + tags.join(' ') + '</td>'
+        + '<td><a data-set="' + HUB.esc(x.code) + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">改价</a> '
+        + '<a data-edit="' + HUB.esc(x.code) + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">编辑</a> '
+        + '<a data-del="' + HUB.esc(x.code) + '" style="font-size:12px;color:#c0392b;cursor:pointer">删</a></td></tr>';
+    }).join('');
+
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-set]'), function(el){
+      el.onclick = function(){
+        var d2 = data(); var code = el.dataset.set;
+        var it = (d2.list||[]).filter(function(y){ return y.code === code; })[0];
+        var v = prompt('填最新' + (it.type==='index'?'点位':'单位净值'), priceOf(it, d2) || '');
+        if (v == null) return;
+        var num = Number(v); if (isNaN(num)) { HUB.toast('不是数字'); return; }
+        it.lastPrice = num;
+        var qk = (it.type==='index' && it.indexCode) ? it.indexCode : code;
+        d2.quotes = d2.quotes || {};
+        d2.quotes[qk] = Object.assign({}, d2.quotes[qk]||{}, it.type==='index'?{price:num}:{nav:num}, { fetchedAt: HUB.nowStamp() });
+        d2.updatedAt = HUB.nowStamp();
+        save(d2); render(); HUB.toast('已更新价格');
+      };
+    });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-edit]'), function(el){ el.onclick = function(){ edit(el.dataset.edit); }; });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这个标的？')) return;
+        var d2 = data();
+        d2.list = (d2.list||[]).filter(function(y){ return y.code !== el.dataset.del; });
+        d2.customOrder = (d2.customOrder||[]).filter(function(c){ return c !== el.dataset.del; });
+        save(d2); render();
+      };
+    });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-up]'), function(el){ el.onclick = function(){ move(el.dataset.up, -1); }; });
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-down]'), function(el){ el.onclick = function(){ move(el.dataset.down, 1); }; });
+  }
+
+  function move(code, dir){
+    var d = data(); var order = (d.customOrder||[]).slice();
+    if (!order.length) order = (d.list||[]).map(function(x){ return x.code; });
+    var i = order.indexOf(code); if (i < 0) return;
+    var j = i + dir; if (j < 0 || j >= order.length) return;
+    order[i] = order[j]; order[j] = code;
+    d.customOrder = order; d.sort = { key:'custom', dir:'asc' }; save(d); render();
+  }
+
+  function edit(code){
+    var d = data();
+    var x = (d.list||[]).filter(function(y){ return y.code === code; })[0] || {
+      code:'', name:'', type:'fund', indexCode:'', target:null, alertDir:'down', note:'', lastPrice:null, show:[], alertState:false
+    };
+    var isNew = !(d.list||[]).filter(function(y){ return y.code === code; }).length;
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:660px"><h3>' + (isNew?'新增观察标的':'编辑 · ' + HUB.esc(x.name)) + '</h3>'
+      + '<p class="dlg-sub">指数填点位、基金填单位净值；目标价可空（空 = 不提醒）</p>'
+      + '<div class="form-grid">'
+      + '<div><label class="f">名称</label><input id="xName" type="text" value="' + HUB.esc(x.name) + '"></div>'
+      + '<div><label class="f">代码</label><input id="xCode" type="text" value="' + HUB.esc(x.code) + '"></div>'
+      + '<div><label class="f">类型</label><select id="xType"><option value="fund"' + (x.type==='fund'?' selected':'') + '>基金</option><option value="index"' + (x.type==='index'?' selected':'') + '>指数</option></select></div>'
+      + '<div><label class="f">指数代码（估值 / 拥挤度用）</label><input id="xIndex" type="text" value="' + HUB.esc(x.indexCode||'') + '"></div>'
+      + '<div><label class="f">现价 / 净值</label><input id="xPrice" type="number" step="0.0001" value="' + (x.lastPrice!=null?x.lastPrice:'') + '"></div>'
+      + '<div><label class="f">目标价</label><input id="xTarget" type="number" step="0.0001" value="' + (x.target!=null?x.target:'') + '"></div>'
+      + '<div><label class="f">提醒方向</label><select id="xDir">'
+      + '<option value="down"' + (x.alertDir==='down'?' selected':'') + '>跌到目标即提醒</option>'
+      + '<option value="up"' + (x.alertDir==='up'?' selected':'') + '>涨到目标即提醒</option>'
+      + '<option value="cross"' + (x.alertDir==='cross'?' selected':'') + '>跨越目标即提醒</option></select></div>'
+      + '<div><label class="f">备注</label><input id="xNote" type="text" value="' + HUB.esc(x.note||'') + '"></div>'
+      + '<div style="grid-column:1/-1"><label class="f">显示估值项</label>'
+      + '<div class="checkline"><label><input type="checkbox" id="xPe"' + ((x.show||[]).indexOf('pe')>=0?' checked':'') + '> 显示 PE 分位</label>'
+      + '<label><input type="checkbox" id="xPb"' + ((x.show||[]).indexOf('pb')>=0?' checked':'') + '> 显示 PB 分位</label></div></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="xClose">取消</button><button class="btn" id="xSave">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#xClose').onclick = function(){ m.remove(); };
+    m.querySelector('#xSave').onclick = function(){
+      var code2 = m.querySelector('#xCode').value.trim();
+      var name = m.querySelector('#xName').value.trim();
+      if (!code2 || !name){ HUB.toast('代码和名称都要填'); return; }
+      var show = [];
+      if (m.querySelector('#xPe').checked) show.push('pe');
+      if (m.querySelector('#xPb').checked) show.push('pb');
+      var obj = {
+        code: code2, name: name, type: m.querySelector('#xType').value,
+        indexCode: m.querySelector('#xIndex').value.trim(),
+        lastPrice: m.querySelector('#xPrice').value === '' ? null : Number(m.querySelector('#xPrice').value),
+        target: m.querySelector('#xTarget').value === '' ? null : Number(m.querySelector('#xTarget').value),
+        alertDir: m.querySelector('#xDir').value, note: m.querySelector('#xNote').value.trim(),
+        show: show, alertState: x.alertState || false, addedAt: x.addedAt || HUB.nowStamp()
+      };
+      var d2 = data(), l = d2.list || [], idx = -1;
+      l.forEach(function(y, i){ if (y.code === obj.code) idx = i; });
+      if (idx >= 0) l[idx] = obj; else l.push(obj);
+      d2.list = l;
+      if (!(d2.customOrder||[]).length) d2.customOrder = l.map(function(y){ return y.code; });
+      else if (d2.customOrder.indexOf(obj.code) < 0) d2.customOrder.push(obj.code);
+      save(d2); m.remove(); render(); HUB.toast('已保存');
+    };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  }
+
+  /* 到点检查：生成 auto_fund_<code>_<target>_<date> 备忘，文本逐字照原站模板 */
+  function checkAlerts(){
+    var d = data(), l = d.list || [], memos = HUB.get('memos', []) || [], ids = {};
+    memos.forEach(function(m){ ids[m.id] = true; });
+    var n = 0, today = HUB.todayStr().replace(/-/g,'');
+    l.forEach(function(x){
+      var p = priceOf(x, d), t = Number(x.target);
+      if (!t || p == null) return;
+      var g = (p - t)/t*100;
+      var hit = (x.alertDir === 'up') ? (p >= t) : (p <= t);
+      if (!hit) { x.alertState = false; return; }
+      if (x.alertState) return;
+      var id = 'auto_fund_' + x.code + '_' + x.target + '_' + today;
+      if (ids[id]) { x.alertState = true; return; }
+      var txt = '【基金到点】' + x.name + '(' + x.code + ') ' + (x.type==='index'?'点位 ':'单位净值 ')
+        + (x.type==='index'? Number(p).toFixed(2) : Number(p).toFixed(4))
+        + '，已' + (x.alertDir==='up'?'涨到':'跌到') + '目标以' + (x.alertDir==='up'?'上':'下') + ' '
+        + (x.type==='index'? Number(t).toFixed(2) : Number(t).toFixed(4))
+        + '（距目标 ' + (g>0?'+':'') + g.toFixed(2) + '%）';
+      memos.push({ id:id, auto:true, done:false, text:txt, time:'', created:Date.now(), important:false });
+      ids[id] = true; x.alertState = true; n++;
+    });
+    if (n) HUB.set('memos', memos);
+    save(d);
+    HUB.toast(n ? '生成 ' + n + ' 条到点备忘' : '没有新的到点标的');
+    render();
+  }
+
+  $('btnCheck').onclick = checkAlerts;
+  $('btnRefresh').onclick = function(){
+    HUB.toast('静态页直连行情会被 CORS 拦住，先用「改价」手填，或配置云端后由服务端抓取');
+    var d = data();
+    d.refreshErrors = { note:'file:// 页面无法直连东方财富接口（CORS），原站是通过 WorkBuddy 服务端代理抓取的', at: HUB.nowStamp() };
+    save(d); render();
+  };
+  $('btnAdd').onclick = function(){ edit(''); };
+  $('q').oninput = function(){ curQ = this.value.trim(); render(); };
+  $('sortSel').onchange = function(){ curSort = this.value; render(); };
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+})();
+</script>
+</body>
+</html>
