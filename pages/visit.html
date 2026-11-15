@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>客户拜访安排</title>
+<link rel="stylesheet" href="../shared/hub.css">
+<style>
+.dayhd{display:flex;align-items:center;gap:10px;margin:18px 0 2px;flex-wrap:wrap}
+.dayhd .d{font-size:15px;font-weight:700;color:#1a3c6e}
+.dayhd .n{font-size:12px;color:#93a1b4}
+.cust{background:#fff;border-radius:12px;padding:13px 15px;margin-top:10px;box-shadow:0 2px 8px rgba(26,60,110,.06);border-left:3px solid #6f8fc4}
+.cust.hot{border-left-color:#c0392b;background:#fff9f8}
+.cust .l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cust .nm{font-size:15px;font-weight:700;color:#1a3c6e}
+.cust .prem{font-size:15px;font-weight:700;color:#c0392b;margin-left:auto;font-variant-numeric:tabular-nums}
+.cust .l2{font-size:13px;color:#4a5c73;line-height:1.9;margin-top:7px}
+.cust .l2 .lb{color:#93a1b4;margin-right:4px}
+.cust .ops{margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.cust .ops a{font-size:12px;color:#1a6ee0;cursor:pointer}
+.cust .ops a.del{color:#c0392b}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../个人中控台.html">← 返回中控台</a>
+  <div class="hd">
+    <h1>📋 客户拜访安排</h1>
+    <div class="sub">按日分组 · 保费高亮 · 电话直达 · 二访优先于备注</div>
+  </div>
+  <div class="syncbar">
+    <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
+    <button class="btn-mini" id="btnSync">同步设置</button>
+  </div>
+
+  <div class="stat">
+    <div class="cell"><div class="k">客户数</div><div class="v" id="sCust">0</div></div>
+    <div class="cell"><div class="k">合计保费</div><div class="v small" id="sPrem">0</div></div>
+    <div class="cell"><div class="k">拜访日数</div><div class="v" id="sDays">0</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="q" placeholder="搜客户名 / 电话 / 地址 / 备注…" style="flex:1;min-width:180px">
+      <button class="btn" id="btnAdd">＋ 新增客户</button>
+      <button class="btn gray" id="btnOrder">保费排序：高→低</button>
+      <button class="btn ghost" id="btnPull">拉取乐享最新</button>
+    </div>
+    <div class="hint" id="meta"></div>
+  </div>
+
+  <div id="list"></div>
+  <div class="footer-f">1 访记录不显示、不参与搜索；2 访（最近一次反馈）显示在备注之上 · 保费 ≥20 万高亮</div>
+</div>
+
+<a class="pill" href="memo.html">🔔 备忘提醒</a>
+
+<script src="../data/seed.js"></script>
+<script src="../shared/hub.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var curQ = '', sortHigh = true;
+  function data(){ return HUB.get('visits', {data:[], updatedAt:'', source:''}) || {data:[]}; }
+  function rows(){ return (data().data || []); }
+  function save(l, meta){
+    var d = data(); d.data = l;
+    d.updatedAt = HUB.nowStamp();
+    if (meta) d.source = meta;
+    HUB.set('visits', d);
+  }
+  function wan(n){
+    n = Number(n)||0;
+    if (!n) return '—';
+    return (n/10000).toFixed(n >= 1000000 ? 0 : 1).replace(/\.0$/, '') + '万';
+  }
+  function fmtPrem(n){ return '¥' + (Number(n)||0).toLocaleString('zh-CN'); }
+
+  /* 原始数据没有 id，首次打开时补上，供编辑/删除定位 */
+  function ensureIds(){
+    var l = rows(), need = false;
+    l.forEach(function(r, i){ if (!r.id){ r.id = 'v' + (r.key||'x').replace(/-/g,'') + '_' + i; need = true; } });
+    if (need){
+      var d = data(); d.data = l;
+      HUB.write('visits', d, { silent:true });
+    }
+  }
+
+  function render(){
+    ensureIds();
+    var all = rows();
+    var days = {};
+    all.forEach(function(r){ days[r.key || '未排期'] = (days[r.key||'未排期']||0) + 1; });
+    $('sCust').textContent = all.length;
+    $('sPrem').textContent = wan(all.reduce(function(s,r){ return s + (Number(r.prem)||0); }, 0));
+    $('sDays').textContent = Object.keys(days).length;
+    var d = data();
+    $('meta').textContent = '数据来源：' + (d.source || '乐享客户拜访安排') + ' · 最近更新 ' + (d.updatedAt || '—') + ' · 共 ' + all.length + ' 位客户';
+
+    var q = curQ.toLowerCase();
+    var shown = all.filter(function(r){
+      if (!q) return true;
+      var hay = [r.name, r.phone, r.addr, r.note, r.second, r.product].join(' ').toLowerCase();
+      return hay.indexOf(q) >= 0;
+    });
+
+    var groups = {};
+    shown.forEach(function(r){ var k = r.key || '未排期'; (groups[k] = groups[k] || []).push(r); });
+    var keys = Object.keys(groups).sort();
+
+    if (!keys.length){ $('list').innerHTML = '<div class="empty">没有匹配的客户</div>'; return; }
+
+    $('list').innerHTML = keys.map(function(k){
+      var arr = groups[k].slice().sort(function(a,b){
+        return sortHigh ? (Number(b.prem)||0) - (Number(a.prem)||0) : (Number(a.prem)||0) - (Number(b.prem)||0);
+      });
+      var label = arr[0].label || k;
+      var sum = arr.reduce(function(s,r){ return s + (Number(r.prem)||0); }, 0);
+      return '<div class="dayhd"><span class="d">' + HUB.esc(label) + '</span>'
+        + '<span class="n">' + arr.length + ' 位 · 合计 ' + wan(sum) + '（' + fmtPrem(sum) + '）</span></div>'
+        + arr.map(function(r){
+          var hot = (Number(r.prem)||0) >= 200000;
+          return '<div class="cust' + (hot?' hot':'') + '">'
+            + '<div class="l1"><span class="nm">' + HUB.esc(r.name||'（未命名）') + '</span>'
+            + (r.gender ? '<span class="tag">' + HUB.esc(r.gender) + '</span>' : '')
+            + (r.age ? '<span class="tag">' + HUB.esc(String(r.age)) + ' 岁</span>' : '')
+            + (r.periods ? '<span class="tag">' + HUB.esc(r.periods) + '</span>' : '')
+            + (r.pay ? '<span class="tag">' + HUB.esc(r.pay) + '</span>' : '')
+            + (hot ? '<span class="tag hot">大单</span>' : '')
+            + '<span class="prem">' + wan(r.prem) + '</span></div>'
+            + '<div class="l2">'
+            + (r.product ? '<div><span class="lb">产品</span>' + HUB.esc(r.product) + '</div>' : '')
+            + (r.phone ? '<div><span class="lb">电话</span><a href="tel:' + HUB.esc(r.phone) + '" style="color:#1a6ee0;text-decoration:none">' + HUB.esc(r.phone) + '</a></div>' : '')
+            + (r.addr ? '<div><span class="lb">地址</span>' + HUB.esc(r.addr) + '</div>' : '')
+            + (r.bank ? '<div><span class="lb">扣款行</span>' + HUB.esc(r.bank) + '</div>' : '')
+            + (r.effect || r.expire ? '<div><span class="lb">生效</span>' + HUB.esc(r.effect||'—') + (r.expire?' ~ '+HUB.esc(r.expire):'') + '</div>' : '')
+            + (r.second ? '<div style="color:#a9771c"><span class="lb">二访</span>' + HUB.esc(r.second) + '</div>' : '')
+            + (r.note ? '<div><span class="lb">备注</span>' + HUB.esc(r.note) + '</div>' : '')
+            + '</div>'
+            + '<div class="ops"><a data-call="' + HUB.esc(r.phone||'') + '">拨号</a>'
+            + '<a data-copy="' + HUB.esc(r.addr||'') + '">复制地址</a>'
+            + '<a data-edit="' + HUB.esc(r.id||'') + '">编辑</a>'
+            + '<a data-del="' + HUB.esc(r.id||'') + '" class="del">删除</a></div>'
+            + '</div>';
+        }).join('');
+    }).join('');
+
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-call]'), function(el){
+      el.onclick = function(){ if (!el.dataset.call) { HUB.toast('这位客户没记电话'); return; } location.href = 'tel:' + el.dataset.call; };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-copy]'), function(el){
+      el.onclick = function(){
+        if (!el.dataset.copy){ HUB.toast('没有地址'); return; }
+        navigator.clipboard.writeText(el.dataset.copy).then(function(){ HUB.toast('地址已复制'); },
+          function(){ HUB.toast('复制失败，请手动选择'); });
+      };
+    });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){ el.onclick = function(){ edit(el.dataset.edit); }; });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-del]'), function(el){
+      el.onclick = function(){
+        if (!confirm('删除这位客户？')) return;
+        save(rows().filter(function(r){ return r.id !== el.dataset.del; }));
+        render();
+      };
+    });
+  }
+
+  function edit(id){
+    var list = rows();
+    var r = list.filter(function(x){ return x.id === id; })[0] || {
+      id:'v'+Date.now(), key: HUB.todayStr(), label:'', name:'', age:'', gender:'女', phone:'', addr:'',
+      bank:'', product:'', prem:0, periods:'', pay:'', effect:'', expire:'', birthday:'', first:'', second:'', note:''
+    };
+    var isNew = !list.filter(function(x){ return x.id === id; }).length;
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:700px"><h3>' + (isNew?'新增客户':'编辑 · ' + HUB.esc(r.name)) + '</h3>'
+      + '<p class="dlg-sub">日期填 2026-11-06 这种格式；1 访与 2 访按原站字段分开存</p>'
+      + '<div class="form-grid">'
+      + '<div><label class="f">拜访日期</label><input id="vKey" type="date" value="' + HUB.esc(r.key) + '"></div>'
+      + '<div><label class="f">日期标签（如 11月6日）</label><input id="vLabel" type="text" value="' + HUB.esc(r.label||'') + '"></div>'
+      + '<div><label class="f">客户姓名</label><input id="vName" type="text" value="' + HUB.esc(r.name||'') + '"></div>'
+      + '<div><label class="f">电话</label><input id="vPhone" type="text" value="' + HUB.esc(r.phone||'') + '"></div>'
+      + '<div><label class="f">年龄</label><input id="vAge" type="text" value="' + HUB.esc(String(r.age||'')) + '"></div>'
+      + '<div><label class="f">性别</label><select id="vGender"><option' + (r.gender==='女'?' selected':'') + '>女</option><option' + (r.gender==='男'?' selected':'') + '>男</option></select></div>'
+      + '<div style="grid-column:1/-1"><label class="f">地址</label><input id="vAddr" type="text" value="' + HUB.esc(r.addr||'') + '"></div>'
+      + '<div><label class="f">扣款银行</label><input id="vBank" type="text" value="' + HUB.esc(r.bank||'') + '"></div>'
+      + '<div><label class="f">产品</label><input id="vProduct" type="text" value="' + HUB.esc(r.product||'') + '"></div>'
+      + '<div><label class="f">保费（元）</label><input id="vPrem" type="number" step="1" value="' + (r.prem||0) + '"></div>'
+      + '<div><label class="f">缴费方式 / 期数</label><input id="vPeriods" type="text" value="' + HUB.esc(r.periods||'') + '"></div>'
+      + '<div><label class="f">缴费日期</label><input id="vPay" type="text" value="' + HUB.esc(r.pay||'') + '"></div>'
+      + '<div><label class="f">生效日</label><input id="vEffect" type="date" value="' + HUB.esc(r.effect||'') + '"></div>'
+      + '<div><label class="f">失效日</label><input id="vExpire" type="text" placeholder="终身 / 2027-01-06" value="' + HUB.esc(r.expire||'') + '"></div>'
+      + '<div><label class="f">生日</label><input id="vBirth" type="text" value="' + HUB.esc(r.birthday||'') + '"></div>'
+      + '<div><label class="f">1 访（不显示）</label><input id="vFirst" type="text" value="' + HUB.esc(r.first||'') + '"></div>'
+      + '<div style="grid-column:1/-1"><label class="f">2 访 / 最近反馈（显示在备注之上）</label><input id="vSecond" type="text" value="' + HUB.esc(r.second||'') + '"></div>'
+      + '<div style="grid-column:1/-1"><label class="f">备注</label><textarea id="vNote" rows="2">' + HUB.esc(r.note||'') + '</textarea></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="vClose">取消</button><button class="btn" id="vSave">保存</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#vClose').onclick = function(){ m.remove(); };
+    m.querySelector('#vSave').onclick = function(){
+      var name = m.querySelector('#vName').value.trim();
+      if (!name){ HUB.toast('客户姓名要填'); return; }
+      var obj = {
+        id: r.id, key: m.querySelector('#vKey').value || HUB.todayStr(),
+        label: m.querySelector('#vLabel').value.trim() || m.querySelector('#vKey').value || '未排期',
+        name:name, phone:m.querySelector('#vPhone').value.trim(), age:m.querySelector('#vAge').value.trim(),
+        gender:m.querySelector('#vGender').value, addr:m.querySelector('#vAddr').value.trim(),
+        bank:m.querySelector('#vBank').value.trim(), product:m.querySelector('#vProduct').value.trim(),
+        prem:Number(m.querySelector('#vPrem').value)||0, periods:m.querySelector('#vPeriods').value.trim(),
+        pay:m.querySelector('#vPay').value.trim(), effect:m.querySelector('#vEffect').value,
+        expire:m.querySelector('#vExpire').value.trim(), birthday:m.querySelector('#vBirth').value.trim(),
+        first:m.querySelector('#vFirst').value.trim(), second:m.querySelector('#vSecond').value.trim(),
+        note:m.querySelector('#vNote').value.trim()
+      };
+      var l = rows(), idx = -1; l.forEach(function(x,i){ if (x.id === obj.id) idx = i; });
+      if (idx >= 0) l[idx] = obj; else l.push(obj);
+      save(l); m.remove(); render(); HUB.toast('已保存');
+    };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+  }
+
+  $('btnAdd').onclick = function(){ edit('v'+Date.now()); };
+  $('btnOrder').onclick = function(){
+    sortHigh = !sortHigh;
+    this.textContent = sortHigh ? '保费排序：高→低' : '保费排序：低→高';
+    render();
+  };
+  $('btnPull').onclick = function(){
+    HUB.toast('原站的「乐享」接口已不可用，这里改为从备份文件导入');
+    setTimeout(function(){ location.href = 'backup.html'; }, 1100);
+  };
+  $('q').oninput = function(){ curQ = this.value.trim(); render(); };
+  $('btnSync').onclick = HUB.openSyncDialog;
+  HUB.onRemote(function(){ render(); });
+  render();
+})();
+</script>
+</body>
+</html>
