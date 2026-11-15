@@ -43,7 +43,7 @@
     <div id="list"></div>
   </div>
 
-  <div class="footer-f">置顶先于一切，其后按所选字段排序 · 章节标签沿原站分类</div>
+  <div class="footer-f">新增与编辑同一套字段：出处 / 正文 / 感悟 / 标签 · 新加的排在最上面（置顶始终优先）</div>
 </div>
 
 <script src="../data/seed.js?v=20261116g"></script>
@@ -52,7 +52,7 @@
 (function(){
   var $ = function(id){ return document.getElementById(id); };
   var curTag = '', curQ = '';
-  function items(){ return HUB.get('quotes', {items:[],sort:{key:'created',dir:'asc'}}) || {items:[],sort:{key:'created',dir:'asc'}}; }
+  function items(){ return HUB.get('quotes', {items:[],sort:{key:'created',dir:'desc'}}) || {items:[],sort:{key:'created',dir:'desc'}}; }
   function save(o){ HUB.set('quotes', o); }
   function tagOf(q){
     if (q.tag) return q.tag;
@@ -126,16 +126,66 @@
       };
     });
     Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){
-      el.onclick = function(){
-        var o2 = items(); o2.items.forEach(function(x){ if (x.id !== el.dataset.edit) return; });
-        var target = o2.items.filter(function(x){ return x.id === el.dataset.edit; })[0];
-        if (!target) return;
-        var v = prompt('修改内容', target.text);
-        if (v == null) return;
-        target.text = v; target.updatedAt = HUB.nowStamp();
-        save(o2); render(); HUB.toast('已保存');
-      };
+      el.onclick = function(){ openEditor(el.dataset.edit); };
     });
+  }
+
+  function allTags(){
+    var set = {};
+    (items().items || []).forEach(function(q){ set[tagOf(q)] = 1; });
+    return Object.keys(set).sort(function(a,b){ return a.localeCompare(b,'zh-CN'); });
+  }
+
+  /* 新增 / 编辑共用一套表单：出处、正文、感悟、标签、置顶 */
+  function openEditor(id){
+    var o = items(), list = o.items || [];
+    var target = id ? list.filter(function(x){ return x.id === id; })[0] : null;
+    if (id && !target) return;
+    var isNew = !target;
+    var it = target || { text:'', source:'', note:'', tag:'', pinned:false, createdAt:'' };
+    var tags = allTags();
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:680px"><h3>' + (isNew ? '新增一句' : '编辑 · ' + HUB.esc(it.source || '随手记')) + '</h3>'
+      + '<p class="dlg-sub">出处填书名/节目/人名，正文填原句，感悟填你自己的话，标签决定它归到哪个分类</p>'
+      + '<div class="form-grid one">'
+      + '<div><label class="f">出处（可空）</label><input type="text" id="qSrc" value="' + HUB.esc(it.source||'') + '" placeholder="经营未来_(李明博)"></div>'
+      + '<div><label class="f">正文（必填）</label><textarea id="qTxt" rows="3" placeholder="大学中途退学的话一定比高中毕业证还强些吧。">' + HUB.esc(it.text||'') + '</textarea></div>'
+      + '<div><label class="f">感悟（可空）</label><textarea id="qNote" rows="3" placeholder="宁为凤尾不做鸡头；不求成功，只想看看最强版本的自己">' + HUB.esc(it.note||'') + '</textarea></div>'
+      + '<div><label class="f">标签 / 分类</label><input type="text" id="qTag" list="qTagList" value="' + HUB.esc(it.tag || tagOf(it)) + '" placeholder="自我期许：成为更强的自己">'
+      + '<datalist id="qTagList">' + tags.map(function(t){ return '<option value="' + HUB.esc(t) + '">'; }).join('') + '</datalist>'
+      + '<div class="hint" style="margin-top:6px">输入已有标签会直接归入该分类；写新名称就是新建分类</div></div>'
+      + '<div><label class="checkline" style="font-size:13px"><input type="checkbox" id="qPin"' + (it.pinned?' checked':'') + '> 置顶（置顶的永远排最前）</label></div>'
+      + '</div><div class="dlg-foot"><button class="btn gray" id="qCancel">取消</button><button class="btn" id="qSave">' + (isNew?'加入句子库':'保存修改') + '</button></div></div>';
+    document.body.appendChild(m);
+    m.querySelector('#qCancel').onclick = function(){ m.remove(); };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+    m.querySelector('#qSave').onclick = function(){
+      var txt = m.querySelector('#qTxt').value.trim();
+      if (!txt){ HUB.toast('正文不能为空'); return; }
+      var payload = {
+        source: m.querySelector('#qSrc').value.trim(),
+        text: txt,
+        note: m.querySelector('#qNote').value.trim(),
+        tag: m.querySelector('#qTag').value.trim(),
+        pinned: m.querySelector('#qPin').checked
+      };
+      var o2 = items();
+      if (isNew){
+        o2.items.unshift({
+          id: 'q_' + Date.now().toString(36), source: payload.source, text: payload.text,
+          note: payload.note, tag: payload.tag, pinned: payload.pinned,
+          createdAt: HUB.nowStamp(), updatedAt: ''
+        });
+        if (o2.sort) o2.sort.key = 'created';
+      } else {
+        var t2 = o2.items.filter(function(x){ return x.id === id; })[0];
+        if (!t2) return;
+        t2.source = payload.source; t2.text = payload.text; t2.note = payload.note;
+        t2.tag = payload.tag; t2.pinned = payload.pinned; t2.updatedAt = HUB.nowStamp();
+      }
+      save(o2); m.remove(); render();
+      HUB.toast(isNew ? '已加入句子库（排在最上面）' : '已保存');
+    };
   }
 
   $('btnRandom').onclick = function(){
@@ -155,33 +205,24 @@
     m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
   };
 
-  $('btnNew').onclick = function(){
-    var m = document.createElement('div');
-    m.className = 'mask';
-    m.innerHTML = '<div class="dlg"><h3>新增一句</h3><p class="dlg-sub">句子、章节、备注（备注用「·」分段，最后一段会作为标签）</p>'
-      + '<div class="form-grid one">'
-      + '<div><label class="f">句子</label><textarea id="nt" rows="3"></textarea></div>'
-      + '<div><label class="f">出处 / 来源（可空）</label><input type="text" id="ns"></div>'
-      + '<div><label class="f">备注 / 章节路径（可空）</label><input type="text" id="nn" placeholder="六、文艺短句 · 幽默脑洞段子"></div>'
-      + '</div><div class="dlg-foot"><button class="btn gray" id="nc">取消</button><button class="btn" id="nok">保存</button></div></div>';
-    document.body.appendChild(m);
-    m.querySelector('#nc').onclick = function(){ m.remove(); };
-    m.querySelector('#nok').onclick = function(){
-      var t = m.querySelector('#nt').value.trim();
-      if (!t){ HUB.toast('句子不能为空'); return; }
-      var o = items();
-      o.items.unshift({ id:'q_'+Date.now().toString(36), tag:'', note:m.querySelector('#nn').value.trim(),
-        text:t, pinned:false, source:m.querySelector('#ns').value.trim(), createdAt:HUB.nowStamp(), updatedAt:'' });
-      save(o); m.remove(); render(); HUB.toast('已加入句子库');
-    };
-  };
+  $('btnNew').onclick = function(){ openEditor(''); };
 
   $('q').oninput = function(){ curQ = this.value.trim().toLowerCase(); render(); };
   $('sortKey').onchange = function(){
-    var o = items(); o.sort = { key:this.value, dir:$('btnDir').dataset.dir||'asc' }; save(o); render();
+    var o = items(); o.sort = { key:this.value, dir:$('btnDir').dataset.dir||'desc', migrated:true }; save(o); render();
   };
-  $('btnDir').dataset.dir = (items().sort && items().sort.dir) || 'asc';
-  $('btnDir').textContent = $('btnDir').dataset.dir === 'desc' ? '倒序 ↓' : '正序 ↑';
+  /* 新加的排最上面：默认按时间倒序（老数据一次性迁过来） */
+  (function(){
+    var o = items();
+    if (!o.sort || !o.sort.migrated){
+      o.sort = { key: (o.sort && o.sort.key) || 'created', dir: 'desc', migrated: true };
+      save(o);
+    }
+    var dir = (o.sort && o.sort.dir) || 'desc';
+    $('btnDir').dataset.dir = dir;
+    $('btnDir').textContent = dir === 'desc' ? '倒序 ↓' : '正序 ↑';
+    $('sortKey').value = (o.sort && o.sort.key) || 'created';
+  })();
   $('btnDir').onclick = function(){
     this.dataset.dir = this.dataset.dir === 'desc' ? 'asc' : 'desc';
     this.textContent = this.dataset.dir === 'desc' ? '倒序 ↓' : '正序 ↑';
