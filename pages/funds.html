@@ -6,8 +6,14 @@
 <title>指数 / 基金观察</title>
 <link rel="stylesheet" href="../shared/hub.css?v=20261116g">
 <style>
-table.data.min{min-width:900px}
+table.data.min{min-width:1040px}
+table.data.min .tag{white-space:nowrap}
 .pos{font-size:11.5px;color:#1a6ee0;cursor:pointer;margin-left:6px;user-select:none}
+.seg{display:inline-flex;border:1px solid #d5dbe5;border-radius:7px;overflow:hidden;margin-right:6px;vertical-align:middle}
+.seg a{font-size:11.5px;padding:2px 7px;color:#5c6b80;cursor:pointer;text-decoration:none;background:#fff}
+.seg a.on{background:#1a6ee0;color:#fff}
+.trk{font-size:12px;color:#3c5171;line-height:1.5}
+.trk i{font-style:normal;color:#98a4b5;font-size:11px}
 </style>
 </head>
 <body>
@@ -45,11 +51,11 @@ table.data.min{min-width:900px}
 
   <div class="panel">
     <div class="table-wrap"><table class="data min" id="tbl">
-      <colgroup><col style="width:26%"><col style="width:8%"><col style="width:12%"><col style="width:9%"><col style="width:10%"><col style="width:10%"><col style="width:15%"><col style="width:10%"></colgroup>
-      <thead><tr><th>名称 / 代码</th><th>类型</th><th>现价 / 净值</th><th>涨跌</th><th>目标</th><th>距目标</th><th>估值 / 拥挤度</th><th>操作</th></tr></thead>
+      <colgroup><col style="width:21%"><col style="width:7%"><col style="width:9%"><col style="width:7%"><col style="width:9%"><col style="width:8%"><col style="width:15%"><col style="width:16%"><col style="width:8%"></colgroup>
+      <thead><tr><th>名称 / 代码</th><th>类型</th><th>现价 / 净值</th><th>涨跌</th><th>目标</th><th>距目标</th><th>跟踪指数</th><th>估值（可切 PE / PB）</th><th>操作</th></tr></thead>
       <tbody></tbody>
     </table></div>
-    <div class="hint">指数显示 2 位小数、基金显示 4 位小数；距目标 =（现价 − 目标）/ 目标 × 100%。到点判断：下行 = 现价 ≤ 目标，上行 = 现价 ≥ 目标，只提醒一次。</div>
+    <div class="hint">指数显示 2 位小数、基金显示 4 位小数；距目标 =（现价 − 目标）/ 目标 × 100%。到点判断：下行 = 现价 ≤ 目标，上行 = 现价 ≥ 目标，只提醒一次。估值列点 PE / PB 即可切换口径，同一指数的所有基金跟着变；后面百分比是该指数历史百分位（0% 最便宜、100% 最贵），≥80% 标橙、≥90% 标红。</div>
   </div>
 
   <div class="footer-f">行情与原站同源（东方财富 / 中证官网 / 蛋卷估值）· 静态页直连行情会被浏览器 CORS 拦住，可「改价」手填后本机计算</div>
@@ -64,7 +70,7 @@ table.data.min{min-width:900px}
   var $ = function(id){ return document.getElementById(id); };
   var curQ = '', curSort = 'custom';
 
-  function data(){ return HUB.get('funds', {list:[], quotes:{}, customOrder:[], sort:{key:'custom',dir:'asc'}}) || {list:[],quotes:{}}; }
+  function data(){ return HUB.get('funds', {list:[], quotes:{}, customOrder:[], sort:{key:'custom',dir:'asc'}, valMode:{}}) || {list:[],quotes:{}}; }
   function save(d){ HUB.set('funds', d); }
   function items(){ return data().list || []; }
 
@@ -85,6 +91,33 @@ table.data.min{min-width:900px}
     return (p - t)/t*100;
   }
   function gradeCls(p){ if (p == null) return ''; if (p >= 90) return 'g-up'; if (p >= 80) return 'g-mid'; if (p < 40) return 'g-low'; return ''; }
+
+  /* 每只基金对应的跟踪指数（同一指数共用一套 PE/PB 口径） */
+  function valKey(x){ return x.indexCode || (x.type === 'index' ? x.code : '') || x.code || x.name || ''; }
+  function trackLabel(x, d){
+    var n = x.trackName || '';
+    if (!n){ var q = quoteOf(x, d); if (q && q.name) n = q.name; }
+    if (!n && x.type === 'index') n = x.name;
+    if (!n) return '<span style="color:#b8c2ce">—</span>';
+    var code = x.indexCode || (x.type === 'index' ? x.code : '');
+    return '<div class="trk">' + HUB.esc(n) + (code ? '<br><i>' + HUB.esc(code) + '</i>' : '') + '</div>';
+  }
+  /* 跟踪指数的估值行情（基金的 PE/PB 要取它跟踪的那个指数） */
+  function indexQuote(x, d){
+    d = d || data();
+    var key = x.indexCode || (x.type === 'index' ? x.code : '');
+    if (!key) return null;
+    return (d.quotes || {})[key] || null;
+  }
+  function modeOf(x, d){
+    var m = ((d.valMode || {})[valKey(x)]);
+    if (m === 'pe' || m === 'pb') return m;
+    var q = indexQuote(x, d);
+    if (q && q.pePct != null) return 'pe';
+    if (q && q.pbPct != null) return 'pb';
+    if ((x.show || []).indexOf('pb') >= 0) return 'pb';
+    return 'pe';
+  }
 
   function crowdOf(x){
     if (!x.indexCode) return null;
@@ -127,19 +160,24 @@ table.data.min{min-width:900px}
     $('hint').textContent = '行情时间 ' + (d.updatedAt||'—') + ' · 估值时间 ' + (d.valuationAt||'—') + ' · 来源 ' + (d.source||'—');
 
     var tb = $('tbl').querySelector('tbody');
-    if (!shown.length){ tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#a8b3c2">没有标的，点右上「新增标的」加一个</td></tr>'; return; }
+    if (!shown.length){ tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#a8b3c2">没有标的，点右上「新增标的」加一个</td></tr>'; return; }
 
     tb.innerHTML = shown.map(function(x){
       var q = quoteOf(x, d), p = priceOf(x, d), g = gapOf(x, d);
       var chg = (q && q.change != null) ? Number(q.change) : null;
-      var tags = [];
-      if (q && x.show && x.show.indexOf('pe') >= 0 && q.pePct != null)
-        tags.push('<span class="tag ' + gradeCls(q.pePct*100) + '">PE ' + q.pe + ' · ' + (q.pePct*100).toFixed(0) + '%</span>');
-      if (q && x.show && x.show.indexOf('pb') >= 0 && q.pbPct != null)
-        tags.push('<span class="tag ' + gradeCls(q.pbPct*100) + '">PB ' + q.pb + ' · ' + (q.pbPct*100).toFixed(0) + '%</span>');
+      var vm = modeOf(x, d), key = valKey(x);
+      var iq = indexQuote(x, d);
+      var seg = '<span class="seg" title="同一指数共用这个口径">'
+        + '<a data-vm="' + HUB.esc(key) + '" data-mode="pe" class="' + (vm === 'pe' ? 'on' : '') + '">PE</a>'
+        + '<a data-vm="' + HUB.esc(key) + '" data-mode="pb" class="' + (vm === 'pb' ? 'on' : '') + '">PB</a></span>';
+      var pct = iq ? (vm === 'pe' ? iq.pePct : iq.pbPct) : null;
+      var val = iq ? (vm === 'pe' ? iq.pe : iq.pb) : null;
+      var vtxt = val == null
+        ? (vm === 'pe' ? 'PE —' : 'PB —')
+        : ((vm === 'pe' ? 'PE ' : 'PB ') + val + ' · ' + (pct != null ? (pct * 100).toFixed(0) + '%' : '分位 —'));
+      var tags = [seg + '<span class="tag ' + gradeCls(pct != null ? pct * 100 : null) + '">' + vtxt + '</span>'];
       var cw = crowdOf(x);
       if (cw) tags.push('<span class="tag ' + (cw.ratio>2?'hot':(cw.ratio>1.3?'pin':'')) + '">拥挤 ' + cw.ratio.toFixed(2) + '×</span>');
-      if (!tags.length) tags.push('<span style="color:#b8c2ce">—</span>');
 
       return '<tr><td><b>' + HUB.esc(x.name) + '</b><br><span style="font-size:11.5px;color:#93a1b4">' + HUB.esc(x.code) + (x.note?' · '+HUB.esc(x.note):'') + '</span></td>'
         + '<td>' + (x.type === 'index' ? '<span class="tag">指数</span>' : '<span class="tag">基金</span>') + '</td>'
@@ -147,11 +185,24 @@ table.data.min{min-width:900px}
         + '<td class="num">' + (chg == null ? '—' : '<span class="' + (chg>0?'up':(chg<0?'down':'nd')) + '">' + (chg>0?'+':'') + chg + '%</span>') + '</td>'
         + '<td class="num">' + (x.target ? dp(x, x.target) + ' ' + (x.alertDir==='up'?'↑':'↓') : '—') + '</td>'
         + '<td class="num">' + (g == null ? '—' : '<span class="' + (g<0?'down':'up') + '">' + g.toFixed(2) + '%</span>') + '</td>'
+        + '<td>' + trackLabel(x, d) + '</td>'
         + '<td>' + tags.join(' ') + '</td>'
         + '<td><a data-set="' + HUB.esc(x.code) + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">改价</a> '
         + '<a data-edit="' + HUB.esc(x.code) + '" style="font-size:12px;color:#1a6ee0;cursor:pointer">编辑</a> '
         + '<a data-del="' + HUB.esc(x.code) + '" style="font-size:12px;color:#c0392b;cursor:pointer">删</a></td></tr>';
     }).join('');
+
+    Array.prototype.forEach.call(tb.querySelectorAll('[data-vm]'), function(el){
+      el.onclick = function(){
+        var d2 = data(), key = el.dataset.vm, mode = el.dataset.mode;
+        d2.valMode = d2.valMode || {};
+        d2.valMode[key] = mode;
+        // 同一指数的基金一起改口径
+        (d2.list || []).forEach(function(y){ if (valKey(y) === key) y.show = [mode]; });
+        save(d2); render();
+        HUB.toast('该指数已切换为 ' + (mode === 'pe' ? 'PE' : 'PB') + ' 口径');
+      };
+    });
 
     Array.prototype.forEach.call(tb.querySelectorAll('[data-set]'), function(el){
       el.onclick = function(){
@@ -197,6 +248,8 @@ table.data.min{min-width:900px}
       code:'', name:'', type:'fund', indexCode:'', target:null, alertDir:'down', note:'', lastPrice:null, show:[], alertState:false
     };
     var isNew = !(d.list||[]).filter(function(y){ return y.code === code; }).length;
+    var saved = (d.valMode || {})[valKey(x)];
+    var curMode = saved || modeOf(x, d);
     var m = document.createElement('div'); m.className = 'mask';
     m.innerHTML = '<div class="dlg" style="max-width:660px"><h3>' + (isNew?'新增观察标的':'编辑 · ' + HUB.esc(x.name)) + '</h3>'
       + '<p class="dlg-sub">指数填点位、基金填单位净值；目标价可空（空 = 不提醒）</p>'
@@ -212,9 +265,11 @@ table.data.min{min-width:900px}
       + '<option value="up"' + (x.alertDir==='up'?' selected':'') + '>涨到目标即提醒</option>'
       + '<option value="cross"' + (x.alertDir==='cross'?' selected':'') + '>跨越目标即提醒</option></select></div>'
       + '<div><label class="f">备注</label><input id="xNote" type="text" value="' + HUB.esc(x.note||'') + '"></div>'
-      + '<div style="grid-column:1/-1"><label class="f">显示估值项</label>'
-      + '<div class="checkline"><label><input type="checkbox" id="xPe"' + ((x.show||[]).indexOf('pe')>=0?' checked':'') + '> 显示 PE 分位</label>'
-      + '<label><input type="checkbox" id="xPb"' + ((x.show||[]).indexOf('pb')>=0?' checked':'') + '> 显示 PB 分位</label></div></div>'
+      + '<div style="grid-column:1/-1"><label class="f">估值口径（该指数只显示一种，通讯录里的基金跟着变）</label>'
+      + '<div class="checkline"><select id="xVal" style="max-width:220px">'
+      + '<option value="pe"' + (curMode==='pe'?' selected':'') + '>显示 PE 及分位</option>'
+      + '<option value="pb"' + (curMode==='pb'?' selected':'') + '>显示 PB 及分位</option>'
+      + '<option value="none"' + (curMode==='none'?' selected':'') + '>不显示估值</option></select></div></div>'
       + '</div><div class="dlg-foot"><button class="btn gray" id="xClose">取消</button><button class="btn" id="xSave">保存</button></div></div>';
     document.body.appendChild(m);
     m.querySelector('#xClose').onclick = function(){ m.remove(); };
@@ -222,11 +277,11 @@ table.data.min{min-width:900px}
       var code2 = m.querySelector('#xCode').value.trim();
       var name = m.querySelector('#xName').value.trim();
       if (!code2 || !name){ HUB.toast('代码和名称都要填'); return; }
-      var show = [];
-      if (m.querySelector('#xPe').checked) show.push('pe');
-      if (m.querySelector('#xPb').checked) show.push('pb');
+      var modeSel = m.querySelector('#xVal').value;
+      var show = modeSel === 'none' ? ['none'] : [modeSel];
       var obj = {
         code: code2, name: name, type: m.querySelector('#xType').value,
+        trackName: x.trackName || '',
         indexCode: m.querySelector('#xIndex').value.trim(),
         lastPrice: m.querySelector('#xPrice').value === '' ? null : Number(m.querySelector('#xPrice').value),
         target: m.querySelector('#xTarget').value === '' ? null : Number(m.querySelector('#xTarget').value),
@@ -237,6 +292,9 @@ table.data.min{min-width:900px}
       l.forEach(function(y, i){ if (y.code === obj.code) idx = i; });
       if (idx >= 0) l[idx] = obj; else l.push(obj);
       d2.list = l;
+      d2.valMode = d2.valMode || {};
+      var nk = valKey(obj);
+      if (modeSel === 'none') delete d2.valMode[nk]; else d2.valMode[nk] = modeSel;
       if (!(d2.customOrder||[]).length) d2.customOrder = l.map(function(y){ return y.code; });
       else if (d2.customOrder.indexOf(obj.code) < 0) d2.customOrder.push(obj.code);
       save(d2); m.remove(); render(); HUB.toast('已保存');
