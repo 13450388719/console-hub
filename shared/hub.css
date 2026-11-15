@@ -114,6 +114,10 @@ table.data tr:hover td{background:#fafcff;}
 .st-grace td{background:#fdecea;}
 .st-over td{background:#e53935;color:#fff;}
 .st-over td a{color:#fff;}
+/* 悬停时保留状态底色：宽限期略加深，逾期改成更深的红，避免整行发白看不清 */
+table.data tr.st-grace:hover td{background:#fbdcd8;}
+table.data tr.st-over:hover td{background:#c62828;color:#fff;}
+table.data tr.st-over:hover td a{color:#fff;}
 .st-paid td{background:#f2fbf4;}
 
 /* ---------- 弹窗 ---------- */
