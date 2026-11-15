@@ -54,7 +54,7 @@
       <label><input type="radio" name="fl" value="todo" checked> 待办</label>
       <label><input type="radio" name="fl" value="all"> 全部</label>
       <label><input type="radio" name="fl" value="done"> 已完成</label>
-      <span style="margin-left:auto;font-size:12px;color:#98a4b5">按重要度排序，前 1 条自动加「重要」</span>
+      <span style="margin-left:auto;font-size:12px;color:#98a4b5">按重要度排序 · 重要由你手动标记（全局 1 条）</span>
     </div>
     <div id="list"></div>
   </div>
@@ -102,20 +102,22 @@
       return ta - tb;
     });
   }
-  /* 全局最多一条 important：评分最高的那条 */
-  function markImportant(){
+  /* 全局最多一条重要：重要由用户手动指定；仅当数据里出现多条时收敛为评分最高的一条 */
+  function normalizePins(){
     var list = memos();
-    var cand = list.filter(function(m){ return !m.done; });
-    var best = null, bs = -1e9;
-    cand.forEach(function(m){ var s = score(m); if (s > bs){ bs = s; best = m; } });
+    var pins = list.filter(function(m){ return m.important; });
+    if (pins.length <= 1) return list;
+    var best = pins.slice().sort(function(a,b){ return score(b) - score(a); })[0];
     var changed = false;
     list.forEach(function(m){
-      var want = (best && m.id === best.id);
+      var want = (m.id === best.id);
       if (!!m.important !== want){ m.important = want; changed = true; }
     });
     if (changed) save(list);
     return list;
   }
+  /* 兼容旧调用点：只收敛，不再按评分自动新增重要 */
+  function markImportant(){ return normalizePins(); }
 
   /* 信用卡宽限期自动提醒：宽限期截止减 1 天，时刻不变 */
   function addDays(dt, n){ var d = new Date(dt.getTime()); d.setDate(d.getDate()+n); return d; }
@@ -193,9 +195,11 @@
 
     $('list').innerHTML = shown.map(function(m){
       var f = fmtTime(m), tags = [];
+      var t = msOf(m);
+      var over = (t != null && t < Date.now() && !m.done);
       if (m.important) tags.push('<span class="tag hot">重要</span>');
       if (m.auto) tags.push('<span class="tag">自动</span>');
-      return '<div class="scard' + (m.important?' pinned':'') + '" style="margin-top:10px;' + (m.done?'opacity:.62':'') + '">'
+      return '<div class="scard' + (m.important?' pinned':'') + (over && !m.important?' over':'') + '" style="margin-top:10px;' + (m.done?'opacity:.62':'') + '">'
         + '<div class="row1">'
         + '<input type="checkbox" data-done="' + m.id + '"' + (m.done?' checked':'') + ' style="margin-top:3px">'
         + '<div class="nm" style="font-weight:400;font-size:14.5px;' + (m.done?'text-decoration:line-through':'') + '">' + HUB.esc(m.text) + '</div>'
