@@ -54,6 +54,7 @@ window.HUB = (function () {
   }
   function write(key, val, opts){
     opts = opts || {};
+    var prev = read(key);                 /* 保存前的旧值，用来判断「真的有变化」 */
     PRECOMPUTED[key] = { v: val };
     rawSet(LS+key, JSON.stringify(val));
     META[key] = Date.now();
@@ -63,7 +64,40 @@ window.HUB = (function () {
       schedulePush();
       try { window.dispatchEvent(new CustomEvent('hub:local', { detail:{key:key} })); } catch(e){}
       maybeBackup(key);
+      /* 弱智吧：保存且内容真的变了，才登记同步请求（改排序等不动内容的操作不触发） */
+      if (key === 'quotes' && !opts.skipSyncReq) {
+        try {
+          if (quotesFingerprint(prev) !== quotesFingerprint(val)) markQuoteSyncReq();
+        } catch(e){}
+      }
     }
+  }
+
+  /* 弱智吧内容指纹：只算表格里那 7 个字段，排序/分页等元数据不算变化 */
+  function quotesFingerprint(v){
+    var arr = (v && v.items) || [], rows = [];
+    for (var i=0;i<arr.length;i++){
+      var x = arr[i] || {};
+      rows.push([x.id||'', x.source||'', x.text||'', x.note||'', x.tag||'',
+                 x.pinned ? '1' : '0', String(x.updatedAt || x.createdAt || '').slice(0,16)].join('\x1f'));
+    }
+    rows.sort();
+    var s = rows.join('\x1e'), h = 5381;
+    for (var j=0;j<s.length;j++){ h = ((h<<5) + h + s.charCodeAt(j)) >>> 0; }
+    return h.toString(16) + ':' + s.length;
+  }
+
+  /* 保存触发：写一条 quote_sync_req，定时任务看到 req>last 才去对齐乐享 */
+  var syncReqTimer = null;
+  function markQuoteSyncReq(){
+    if (!cloudOn()) return;
+    if (syncReqTimer) clearTimeout(syncReqTimer);
+    syncReqTimer = setTimeout(function(){
+      syncReqTimer = null;
+      if (!cloudOn()) return;
+      rowPut('quote_sync_req', { t: Date.now(), at: nowStamp(), scope:'quotes', by:'save', device: cfg.device || '' })
+        .catch(function(){});
+    }, 1200);
   }
   function get(key, fallback){
     var v = read(key);
