@@ -184,9 +184,9 @@ textarea.big{min-height:190px}
     sents.forEach(function(s){
       s = s.replace(/\s+/g, ' ').trim();
       if (!s) return;
-      if (buf && (buf + s).length > 120){ out.push(buf); buf = s; }
+      if (buf && (buf + s).length > 80){ out.push(buf); buf = s; }
       else buf += s;
-      if (buf.length >= 120){ out.push(buf); buf = ''; }
+      if (buf.length >= 80){ out.push(buf); buf = ''; }
     });
     if (buf) out.push(buf);
     return out;
