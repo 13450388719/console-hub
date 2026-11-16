@@ -100,7 +100,7 @@ window.HUB = (function () {
     var data = {};
     KEYS.forEach(function(k){
       var v = read(k);
-      if (v !== null && v !== undefined) data[k] = { t: (META[k]||0), v: v };
+      if (v !== null && v !== undefined) data[k] = { t: (DIRTY[k] ? Math.max(META[k]||0, Date.now()) : (META[k]||0)), v: v };
     });
     return { schema:1, app:'个人中控台', device:cfg.device, updatedAt:new Date().toISOString(), data:data };
   }
@@ -136,13 +136,16 @@ window.HUB = (function () {
       .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); });
   }
 
-  function applyRemote(doc){
+  function applyRemote(doc, opts){
+    opts = opts || {};
     var changed = [];
     if (!doc || !doc.data) return changed;
     Object.keys(doc.data).forEach(function(k){
       var rec = doc.data[k]; if (!rec) return;
+      /* 本机有还没推上去的改动时，不能被一次拉取悄悄盖掉（这是之前账单被回滚的根因） */
+      if (DIRTY[k] && !opts.force) return;
       var rt = Number(rec.t)||0, lt = Number(META[k])||0;
-      if (rt > lt + 500) {
+      if (opts.force || rt > lt + 500) {
         PRECOMPUTED[k] = { v: rec.v };
         rawSet(LS+k, JSON.stringify(rec.v));
         META[k] = rt;
@@ -153,11 +156,11 @@ window.HUB = (function () {
     return changed;
   }
 
-  function pull(manual){
+  function pull(manual, force){
     if (!cloudOn() || pulling) return Promise.resolve([]);
     pulling = true; setStatus('busy','☁️ 同步中…');
     return cloudGet().then(function(doc){
-      var ch = applyRemote(doc);
+      var ch = applyRemote(doc, { force: !!force });
       setStatus('ok','☁️ 已同步');
       pulling = false;
       return ch;
@@ -178,7 +181,10 @@ window.HUB = (function () {
     return cloudGet().catch(function(){ return null; }).then(function(remote){
       if (remote) applyRemote(remote);
       var doc = snapshot();
-      return cloudPut(doc);
+      return cloudPut(doc).then(function(){
+        Object.keys(doc.data).forEach(function(k){ META[k] = doc.data[k].t; });
+        saveMeta();
+      });
     }).then(function(){
       DIRTY = {};
       pushPending = false;
@@ -233,6 +239,10 @@ window.HUB = (function () {
       + '      <input type="text" id="syKey" placeholder="eyJhbGciOi..."></div>'
       + '    <div class="hint" id="syHelp"></div>'
       + '  </div>'
+      + '  <div style="display:flex;gap:8px;margin:10px 0 2px">'
+      + '    <button class="btn ghost" id="syForcePull">↓ 用云端覆盖本机</button>'
+      + '    <button class="btn ghost" id="syForcePush">↑ 把本机推上云端</button>'
+      + '  </div>'
       + '  <div class="dlg-foot">'
       + '    <button class="btn gray" id="syClose">取消</button>'
       + '    <button class="btn ghost" id="syTest">测试连接</button>'
@@ -282,6 +292,19 @@ window.HUB = (function () {
         apply(bak); syncModeUI();
         toast('连接失败：' + e.message);
       });
+    };
+
+    dlg.querySelector('#syForcePull').onclick = function(){
+      if (!cloudOn()) { toast('当前是仅本机模式'); return; }
+      if (!confirm('用云端数据覆盖这台设备？本机还没上传的改动会丢掉。')) return;
+      pull(true, true).then(function(ch){ toast(ch.length ? '已用云端覆盖本机（' + ch.length + ' 类）' : '云端与本机一致'); });
+    };
+    dlg.querySelector('#syForcePush').onclick = function(){
+      if (!cloudOn()) { toast('当前是仅本机模式'); return; }
+      if (!confirm('把这台设备的数据推到云端？其他设备还没同步的改动会被覆盖。')) return;
+      KEYS.forEach(function(k){ DIRTY[k] = true; });
+      DIRTY.__dirty = true;
+      pushNow().then(function(){ toast('已把本机数据推上云端'); });
     };
 
     dlg.querySelector('#sySave').onclick = function(){
@@ -464,9 +487,10 @@ window.HUB = (function () {
     setInterval(function(){
       if (!cloudOn()) return;
       if (document.hidden) return;
-      if (Object.keys(DIRTY).length && DIRTY.__dirty) return;
+      /* 有没推上去的改动就重试，推不上去时不会一直卡在本机旧数据 */
+      if (DIRTY.__dirty) { if (!pushPending) pushNow(); return; }
       pull(false);
-    }, 60000);
+    }, 20000);
     document.addEventListener('visibilitychange', function(){
       if (!cloudOn()) return;
       if (document.hidden) { if (DIRTY.__dirty) pushNow(); return; }
