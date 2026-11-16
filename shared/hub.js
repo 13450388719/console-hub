@@ -172,6 +172,27 @@ window.HUB = (function () {
     });
   }
 
+  /* 弱智吧是只增不删的主数据（删除由乐享表格侧决定），推送时按 ID 并集，
+     防止旧设备拿 24 条覆盖掉已经扩到 85 条的云端版本 */
+  function mergeQuotes(remote, local){
+    try {
+      var rq = remote && remote.data && remote.data.quotes;
+      var lq = local.data.quotes;
+      if (!rq || !Array.isArray(rq.v) || !lq || !Array.isArray(lq.v)) return local;
+      var by = {}, order = [];
+      function stamp(x){ return String(x && (x.updatedAt || x.createdAt || '')).slice(0,16); }
+      rq.v.forEach(function(x){ if (!x || !x.id) return; by[x.id] = x; order.push(x.id); });
+      lq.v.forEach(function(x){
+        if (!x || !x.id) return;
+        var cur = by[x.id];
+        if (!cur){ by[x.id] = x; order.push(x.id); return; }
+        if (stamp(x) > stamp(cur)) by[x.id] = x;
+      });
+      local.data.quotes = { t: Math.max(Number(rq.t)||0, Number(lq.t)||0), v: order.map(function(id){ return by[id]; }) };
+      return local;
+    } catch(e){ return local; }
+  }
+
   function pushNow(){
     if (!cloudOn() || pushPending) return Promise.resolve();
     pushPending = true;
@@ -180,7 +201,7 @@ window.HUB = (function () {
     // 先拉后推：把别的设备写入、本机没有的 key 合并进来，避免互相覆盖
     return cloudGet().catch(function(){ return null; }).then(function(remote){
       if (remote) applyRemote(remote);
-      var doc = snapshot();
+      var doc = mergeQuotes(remote, snapshot());
       return cloudPut(doc).then(function(){
         Object.keys(doc.data).forEach(function(k){ META[k] = doc.data[k].t; });
         saveMeta();
