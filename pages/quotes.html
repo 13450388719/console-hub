@@ -189,15 +189,43 @@
     };
   }
 
+  /* 🎲 随手一句：先按标签等概率抽组，再在组内不重复抽句子（抽完一轮才重置） */
+  var rndBag = {};
+  function rndInt(n){
+    if (n <= 0) return 0;
+    try { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
+    catch(e){ return Math.floor(Math.random()*n); }
+  }
+  function pickOne(){
+    var list = (items().items) || [];
+    if (!list.length) return null;
+    var groups = {};
+    list.forEach(function(it){ var k = it.tag || '未分类'; (groups[k] = groups[k] || []).push(it); });
+    var keys = Object.keys(groups);
+    var key = keys[rndInt(keys.length)];
+    var g = groups[key];
+    var bag = rndBag[key];
+    if (!bag || !bag.length){
+      bag = g.map(function(it){ return it.id; });
+      for (var i=bag.length-1;i>0;i--){ var j=rndInt(i+1); var tmp=bag[i]; bag[i]=bag[j]; bag[j]=tmp; }
+      rndBag[key] = bag;
+    }
+    var id = bag.pop();
+    var q = null;
+    for (var k2=0;k2<g.length;k2++){ if (g[k2].id === id){ q = g[k2]; break; } }
+    if (!q) q = g[rndInt(g.length)];
+    q.__tag = key;
+    return q;
+  }
   $('btnRandom').onclick = function(){
-    var list = items().items || [];
-    if (!list.length){ HUB.toast('库里还没有句子'); return; }
-    var q = list[Math.floor(Math.random()*list.length)];
+    var q = pickOne();
+    if (!q){ HUB.toast('库里还没有句子'); return; }
     var m = document.createElement('div');
     m.className = 'mask';
     m.innerHTML = '<div class="dlg" style="max-width:520px"><h3>🎲 随手一句</h3>'
       + '<div style="font-size:16px;line-height:1.95;margin:14px 0;white-space:pre-wrap">' + HUB.esc(q.text) + '</div>'
       + (q.note?'<div class="hint">'+HUB.esc(q.note)+'</div>':'')
+      + (q.source?'<div class="hint">—— '+HUB.esc(q.source)+'</div>':'')
       + '<div class="dlg-foot"><button class="btn gray" id="rm">关掉</button>'
       + '<button class="btn" id="rp">再抽一句</button></div></div>';
     document.body.appendChild(m);
