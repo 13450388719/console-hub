@@ -167,8 +167,10 @@ textarea.big{min-height:190px}
       if (hk.length) return hk[0];
     }
     var cn = vs.filter(function(v){ return /zh-?CN|zh-?SG|Chinese|中文|普通话/i.test(v.lang + ' ' + v.name); });
+    var xiao = cn.filter(function(v){ return /xiaoxiao|晓晓/i.test(v.name); });
+    if (xiao.length) return xiao[0];                    /* 温柔桃子 = 晓晓（甜美女声），最优先 */
     var fem = cn.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); });
-    if (fem.length) return fem[0];                      /* 温柔桃子优先：晓晓 / 晓伊 等女声 */
+    if (fem.length) return fem.filter(function(v){ return /natural/i.test(v.name); })[0] || fem[0];
     var notMale = cn.filter(function(v){ return !MALE.test(v.name); });
     return notMale[0] || cn[0] || null;
   }
@@ -274,6 +276,16 @@ textarea.big{min-height:190px}
     $('speakState').textContent = '音色已切换：' + voiceLabel(v) + '（下一次朗读生效）';
   };
 
+  function refreshVoiceLabel(){
+    if (playing) return;
+    var v = pickVoice($('voice').value);
+    if (v) $('speakState').textContent = '当前音色：' + voiceLabel(v) + ' · 输入文字后点「开始朗读」';
+    else $('speakState').textContent = '系统还没返回语音包列表，稍等或换 Edge 试试；点「开始朗读」仍会用默认中文音色';
+  }
+  if (window.speechSynthesis){
+    refreshVoiceLabel();
+    speechSynthesis.onvoiceschanged = refreshVoiceLabel;
+  }
   if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function(){ /* 触发一次取列表 */ };
   $('btnSync').onclick = HUB.openSyncDialog;
   txtInfo();
