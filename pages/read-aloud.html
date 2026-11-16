@@ -55,6 +55,7 @@ textarea.big{min-height:190px}
         <option value="0.5">0.5x</option><option value="0.8">0.8x</option>
         <option value="1" selected>1.0x 正常</option>
         <option value="1.2">1.2x</option><option value="1.5">1.5x</option>
+        <option value="2">2.0x</option><option value="3">3.0x</option>
       </select></div>
       <div><label class="f">语调</label><select id="tone">
         <option value="normal" selected>正常</option><option value="low">低沉</option>
@@ -169,6 +170,8 @@ textarea.big{min-height:190px}
     var cn = vs.filter(function(v){ return /zh-?CN|zh-?SG|Chinese|中文|普通话/i.test(v.lang + ' ' + v.name); });
     var xiao = cn.filter(function(v){ return /xiaoxiao|晓晓/i.test(v.name); });
     if (xiao.length) return xiao[0];                    /* 温柔桃子 = 晓晓（甜美女声），最优先 */
+    var yao = cn.filter(function(v){ return /yaoyao|瑶瑶/i.test(v.name); });
+    if (yao.length) return yao[0];                     /* 没晓晓时用瑶瑶，比慧慧更甜 */
     var fem = cn.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); });
     if (fem.length) return fem.filter(function(v){ return /natural/i.test(v.name); })[0] || fem[0];
     var notMale = cn.filter(function(v){ return !MALE.test(v.name); });
@@ -177,6 +180,7 @@ textarea.big{min-height:190px}
 
   /* 按句切分，逐句念；暂停=停下并记住停在哪一句，继续=从那句接着念 */
   var CH = [], cur = 0, playing = false, seq = 0;
+  var curFrom = 0, lastWord = 0, stopChunk = 0, stopFrom = 0;
 
   function chunkText(t){
     var out = [], buf = '';
@@ -196,24 +200,32 @@ textarea.big{min-height:190px}
     return v ? v.name.replace(/\s*-\s*Chinese.*$/i, '') : '系统默认';
   }
 
-  function sayFrom(i){
+  function sayFrom(i, from){
     if (!playing) return;
+    from = from || 0;
     if (i >= CH.length){
       playing = false; cur = 0;
-      $('speakState').textContent = '朗读结束（共 ' + CH.length + ' 句）';
+      $('speakState').textContent = '朗读结束（共 ' + CH.length + ' 段）';
       return;
     }
-    cur = i;
+    cur = i; curFrom = from; lastWord = from;
+    var rest = CH[i].slice(from);
+    if (!rest){ sayFrom(i + 1, 0); return; }
     var myToken = seq;
-    var u = new SpeechSynthesisUtterance(CH[i]);
+    var u = new SpeechSynthesisUtterance(rest);
     var v = pickVoice($('voice').value);
     if (v){ u.voice = v; u.lang = v.lang; }
     else u.lang = ($('voice').value === 'cantonese') ? 'zh-HK' : 'zh-CN';
     u.rate = Number($('rate').value) || 1;
     u.pitch = PITCH[$('tone').value] || 1;
+    u.onboundary = function(e){
+      if (myToken !== seq) return;
+      if (typeof e.charIndex === 'number') lastWord = curFrom + e.charIndex;
+    };
     u.onstart = function(){
       if (myToken !== seq) return;
-      $('speakState').textContent = '正在朗读 ' + (i+1) + '/' + CH.length + '（音色：' + voiceLabel(v) + '）';
+      $('speakState').textContent = '正在朗读第 ' + (i+1) + '/' + CH.length + ' 段（音色：' + voiceLabel(v) + '）'
+        + (curFrom ? ' · 从本段第 ' + curFrom + ' 字接着读' : '');
     };
     u.onend = function(){
       if (myToken !== seq || !playing) return;
@@ -228,36 +240,47 @@ textarea.big{min-height:190px}
     speechSynthesis.speak(u);
   }
 
+  /* Edge/Chrome 的 cancel() 是异步的：连着 cancel 两次、隔一拍再 speak，才不会把旧队列重头念 */
+  function hardCancel(cb){
+    speechSynthesis.cancel();
+    setTimeout(function(){
+      speechSynthesis.cancel();
+      if (cb) setTimeout(cb, 60);
+    }, 60);
+  }
+
   function speak(){
     var t = $('txt').value.trim();
     if (!t){ HUB.toast('先输入或粘贴文字'); return; }
     if (!window.speechSynthesis){ $('speakState').textContent = '这个浏览器不支持语音合成'; return; }
     seq++;
-    speechSynthesis.cancel();
     CH = chunkText(t);
     playing = true;
+    var startIdx = 0;
     var v = pickVoice($('voice').value);
     if (!v && $('voice').value === 'cantonese'){
       $('speakState').textContent = '系统里没找到粤语语音包，已改用默认中文音色朗读';
     }
-    sayFrom(0);
+    hardCancel(function(){ sayFrom(startIdx); });
   }
 
   function pauseSpeak(){
     if (!playing){ $('speakState').textContent = '现在没有在朗读'; return; }
-    seq++;                       /* 让本次朗读的 onend 回调全部失效 */
-    speechSynthesis.cancel();    /* 直接掐断声音，不靠 pause()（Edge/Chrome 对长文本 pause 常失灵） */
+    stopChunk = cur;
+    stopFrom = Math.min(lastWord, (CH[cur] || '').length);   /* 记住停在第几段的第几个字 */
+    seq++;                     /* 让本次朗读的 onend 回调全部失效 */
     playing = false;
-    $('speakState').textContent = '已暂停在第 ' + (cur+1) + '/' + CH.length + ' 句，点「继续」接着读';
+    hardCancel();              /* 真掐断，不靠 pause()（Edge/Chrome 对长文本 pause 常失灵） */
+    $('speakState').textContent = '已暂停在第 ' + (stopChunk+1) + '/' + CH.length + ' 段（本段第 ' + stopFrom + ' 字），点「继续」从这里接着读';
   }
 
   function resumeSpeak(){
     if (playing) return;
     if (!CH.length){ speak(); return; }
-    playing = true;
+    var startIdx = Math.min(stopChunk, CH.length - 1);          /* 停在哪一段 */
+    var startFrom = Math.min(stopFrom, (CH[startIdx] || '').length);  /* 段落里的第几个字 */
     seq++;
-    speechSynthesis.cancel();
-    sayFrom(Math.min(cur, CH.length - 1));
+    hardCancel(function(){ playing = true; sayFrom(startIdx, startFrom); });
   }
 
   function stopSpeak(){
