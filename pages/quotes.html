@@ -245,7 +245,7 @@
       body: JSON.stringify(body)
     }).then(function(r){
       if (!r.ok) throw new Error('HTTP ' + r.status);
-      HUB.toast('已登记同步请求，最长 15 分钟内与乐享表格对齐');
+      HUB.toast('已登记同步请求，下次定时对齐（整点 07 分那一班，最长约 1 小时）');
       btn.textContent = '已提交 ✓';
       setTimeout(function(){ btn.textContent = '⤵ 立即同步'; btn.disabled = false; }, 4000);
     }).catch(function(e){
