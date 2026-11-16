@@ -19,7 +19,6 @@ table.data.min{min-width:680px}
 .op.del{color:#c0392b}
 .op.pay{color:#0b7a4b;font-weight:600}
 .st-over td .op{color:#fff;text-decoration:underline}
-#tblNext tr.hl td{background:#fff6e0;transition:background .3s}
 </style>
 </head>
 <body>
@@ -62,17 +61,6 @@ table.data.min{min-width:680px}
       <div class="hint">状态判定：还款日当天 23:59 前正常；过了还款日进入宽限期（浅红底）；过宽限期截止为逾期（深红底）。宽限期截止 = 还款日 + 宽限天数，时刻取「宽限时点」。</div>
     </div>
 
-    <div class="panel" id="nextPanel">
-      <div class="panel-title"><span>🔔 下月账单提醒</span><span class="grow"></span>
-        <span class="hint" style="margin:0">点上面的「已还款」会自动滚到这里</span>
-      </div>
-      <div class="table-wrap"><table class="data min" id="tblNext">
-        <colgroup><col style="width:22%"><col style="width:20%"><col style="width:18%"><col style="width:20%"><col style="width:20%"></colgroup>
-        <thead><tr><th>银行</th><th>下个还款日</th><th>距还款</th><th>上次已还</th><th>账单状态</th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-      <div class="hint">「已还款」= 在本页「③ 还款记录」自动登记一笔流水 + 把这张卡的还款日滚到下一账期 + 自动滚到这张表。最临近的排最前，刚操作的那行会高亮 6 秒。</div>
-    </div>
   </div>
 
   <!-- ===== tab2 ===== -->
@@ -253,38 +241,7 @@ table.data.min{min-width:680px}
     stats();
   }
 
-  /* ---------- 下月账单提醒 ---------- */
-  var hlTimer = null;
-  function renderNext(hlId){
-    var tb = $('tblNext').querySelector('tbody');
-    var l = cards().filter(function(c){ return !!c.dueDate; })
-      .sort(function(a,b){ return String(a.dueDate).localeCompare(String(b.dueDate)); });
-    if (hlId){
-      var hl = l.filter(function(c){ return c.id === hlId; })[0];
-      if (hl){ l = [hl].concat(l.filter(function(c){ return c.id !== hlId; })); }
-    }
-    if (!l.length){
-      tb.innerHTML = '<tr><td colspan="5" style="color:#93a1b4">还没有卡片设了还款日</td></tr>';
-      return;
-    }
-    tb.innerHTML = l.map(function(c){
-      var d = new Date(c.dueDate + 'T23:59:59');
-      var diff = Math.ceil((d.getTime() - Date.now()) / 864e5);
-      var left = diff > 0 ? ('还有 ' + diff + ' 天') : (diff === 0 ? '今天到期' : ('已过 ' + (-diff) + ' 天'));
-      var billTxt = (Number(c.billAmount) || 0) > 0 ? ('待还 ' + money(c.billAmount)) : '未出账 / 已还清';
-      return '<tr' + (c.id === hlId ? ' class="hl"' : '') + '>'
-        + '<td><b>' + HUB.esc(c.bank) + '</b></td>'
-        + '<td class="num">' + c.dueDate + '</td>'
-        + '<td class="num">' + left + '</td>'
-        + '<td class="num">' + (c.lastPaidAmount ? money(c.lastPaidAmount) : '—')
-        + (c.paidAt ? '<br><span style="font-size:11.5px;color:#93a1b4">' + HUB.esc(c.paidAt) + '</span>' : '') + '</td>'
-        + '<td>' + billTxt + '</td></tr>';
-    }).join('');
-    if (hlTimer) clearTimeout(hlTimer);
-    if (hlId) hlTimer = setTimeout(function(){ renderNext(null); }, 6000);
-  }
-
-  /* ---------- 已还款：记流水 + 滚到下一账期 + 滚到提醒表 ---------- */
+  /* ---------- 已还款：记流水 + 滚到下一账期 ---------- */
   function fmtDate(d){ return d.getFullYear() + '-' + PAD(d.getMonth()+1) + '-' + PAD(d.getDate()); }
   function markPaid(id){
     var l = cards(), idx = -1;
@@ -304,13 +261,8 @@ table.data.min{min-width:680px}
     c.lastPaidAmount = amt;
     c.billAmount = 0;
     saveCards(l);
-    renderCards(); renderRepay(); stats(); renderPicks(); renderNext(c.id);
+    renderCards(); renderRepay(); stats(); renderPicks();
     HUB.toast(amt > 0 ? ('已还清 ' + money(amt) + '，下一个还款日 ' + (c.dueDate||'—')) : ('本期没有账单，还款日已滚到 ' + (c.dueDate||'—')));
-    var p = $('nextPanel');
-    if (p){
-      if (p.scrollIntoView) p.scrollIntoView({ block:'start' });
-      else window.scrollTo(0, p.offsetTop - 12);
-    }
   }
 
   function editCard(id){
@@ -712,9 +664,9 @@ table.data.min{min-width:680px}
   });
 
   $('btnSync').onclick = HUB.openSyncDialog;
-  HUB.onRemote(function(){ renderCards(); renderPicks(); renderInst(); renderRepay(); renderNext(); });
+  HUB.onRemote(function(){ renderCards(); renderPicks(); renderInst(); renderRepay(); });
 
-  renderCards(); renderPicks(); renderInst(); renderRepay(); renderNext();
+  renderCards(); renderPicks(); renderInst(); renderRepay();
   stats();
 })();
 </script>
