@@ -78,25 +78,28 @@ table.data.min{min-width:680px}
   <!-- ===== tab2 ===== -->
   <div class="tabpane" id="t2">
     <div class="panel">
-      <div class="panel-title">① 勾选待还卡片 · 填现金与费率</div>
-      <div id="pickList"></div>
-      <div class="form-grid three" style="margin-top:12px">
-        <div><label class="f">手头可动用现金（元）</label><input type="number" id="cashIn" step="0.01" value="0"></div>
+      <div class="panel-title">① 待款区 · 有欠款的卡，按还款日由近及远</div>
+      <div class="form-grid three" style="margin-bottom:10px">
         <div><label class="f">套现费率（‰，千分之几）</label><input type="number" id="feeIn" step="0.01" value="6"></div>
-        <div style="display:flex;align-items:flex-end"><button class="btn" id="btnCalc">开始计算</button></div>
+        <div><label class="f">手头可动用现金（元）</label><input type="number" id="cashIn" step="0.01" value="0"></div>
+        <div class="hint" style="align-self:end;margin:0">现金直接抵账、不吃费率；剩余部分再折算成要刷金额。</div>
       </div>
-      <div class="hint">现金直接抵账、不吃费率；剩下的账单才靠套现补，而套现的手续费也要从刷出来的额度里出，所以「需要刷出」= 余下账单 ÷ (1 − 费率)，不是余下账单 + 余下账单 × 费率。</div>
-    </div>
-    <div class="panel" id="calcOut" hidden></div>
-    <div class="panel">
-      <div class="panel-title">② 出款区 · 勾选出款卡，按剩余额度分摊</div>
-      <div id="outPickList"></div>
-      <div class="table-wrap" style="margin-top:12px"><table class="data min" id="tblOut">
-        <colgroup><col style="width:18%"><col style="width:16%"><col style="width:16%"><col style="width:17%"><col style="width:17%"><col style="width:16%"></colgroup>
-        <thead><tr><th>银行</th><th>下个账单日</th><th>剩余额度</th><th>分配应刷</th><th>到账金额</th><th>状态</th></tr></thead>
+      <div class="table-wrap"><table class="data min" id="tblDebt">
+        <colgroup><col style="width:24%"><col style="width:28%"><col style="width:18%"><col style="width:18%"><col style="width:12%"></colgroup>
+        <thead><tr><th>银行</th><th>还款日</th><th>待还金额</th><th>要刷金额</th><th>计入</th></tr></thead>
         <tbody></tbody>
       </table></div>
-      <div class="hint">出款顺序按「下个账单日由远及近」，账单日越远，刷出来的钱垫得越久。每卡应刷 = 该卡剩余额度 × 占用比例，到账金额 = 应刷 × (1 − 费率)。</div>
+      <div id="debtSum" style="margin-top:10px"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">② 出款区 · 按下个账单日由远及近，先填「剩余额度」再勾选计算</div>
+      <div class="table-wrap"><table class="data min" id="tblOutAll">
+        <colgroup><col style="width:15%"><col style="width:17%"><col style="width:18%"><col style="width:14%"><col style="width:15%"><col style="width:13%"><col style="width:8%"></colgroup>
+        <thead><tr><th>银行</th><th>下个账单日</th><th>剩余额度</th><th>占用比例</th><th>要刷金额</th><th>到账金额</th><th>计入</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div id="outHint" style="margin-top:10px"></div>
+      <div class="hint">出款顺序按「下个账单日由远及近」，账单日越远，刷出来的钱垫得越久。每卡要刷 = 该卡剩余额度 × 占用比例，到账金额 = 要刷 × (1 − 费率)。</div>
     </div>
   </div>
 
@@ -391,11 +394,18 @@ table.data.min{min-width:680px}
     if (n === 0) return { txt:'今天到期', cls:'st-grace' };
     return { txt:'还剩 ' + n + ' 天', cls:'st-normal' };
   }
+  function fmtDate(d){ return d.getFullYear() + '-' + PAD(d.getMonth()+1) + '-' + PAD(d.getDate()); }
 
-  /* 待款区：只列有账单的卡，按还款日由近及远（过期的自然排最上） */
+  /* 手填的剩余额度先放内存，失焦(change)才落库 */
+  var limitEdits = {};
+  function limitOf(c){
+    return (c.id in limitEdits) ? limitEdits[c.id] : (Number(c.remainLimit)||0);
+  }
+
+  /* 待款区：有账单的卡，按还款日由近及远（过期的自然排最上） */
   function renderPicks(){
+    limitEdits = {};
     var l = cards().filter(function(c){ return (Number(c.billAmount)||0) > 0; });
-    if (!l.length){ $('pickList').innerHTML = '<div class="empty">没有填了本期账单的卡片。先去「信用卡列表」把各卡本期应还金额填上。</div>'; renderOutPicks(); return; }
     l.sort(function(a, b){
       var x = dueDays(a), y = dueDays(b);
       if (x === null && y === null) return 0;
@@ -403,114 +413,127 @@ table.data.min{min-width:680px}
       if (y === null) return -1;
       return x - y;
     });
-    $('pickList').innerHTML = '<div class="checkline" style="flex-direction:column;align-items:flex-start;gap:8px">'
-      + l.map(function(c){
-        var dl = dueLabel(c);
-        return '<label style="width:100%;justify-content:space-between;border-bottom:1px dashed #eceff4;padding:6px 0">'
-          + '<span><input type="checkbox" data-pick="' + c.id + '" checked style="margin-right:6px">' + HUB.esc(c.bank) + '</span>'
-          + '<span class="mini">账单 ' + money(c.billAmount) + ' · 还款日 ' + (c.dueDate||'—')
-          + ' <span class="' + dl.cls + '" style="font-size:12px">' + dl.txt + '</span></span></label>';
-      }).join('') + '</div>';
-    renderOutPicks();
+    var tb = $('tblDebt').querySelector('tbody');
+    tb.innerHTML = l.length ? l.map(function(c){
+      var dl = dueLabel(c);
+      return '<tr>'
+        + '<td>' + HUB.esc(c.bank) + '</td>'
+        + '<td>' + (c.dueDate || '—') + '<span class="' + dl.cls + '" style="font-size:12px;margin-left:6px">' + dl.txt + '</span></td>'
+        + '<td class="num">' + money(c.billAmount) + '</td>'
+        + '<td class="num" data-need="' + c.id + '">—</td>'
+        + '<td><input type="checkbox" data-debt="' + c.id + '" checked></td></tr>';
+    }).join('') : '<tr><td colspan="5" style="text-align:center;color:#a8b3c2">没有填了本期账单的卡片，先去「信用卡列表」填本期应还</td></tr>';
+    renderOutTable();
+    recalcRepay();
   }
 
-  /* 出款区：手上有额度的卡，勾选后才参与分摊 */
-  function renderOutPicks(){
+  /* 出款区：全部卡，按下个账单日由远及近；剩余额度可直接手填，默认不勾 */
+  function renderOutTable(){
     var l = cards().slice().sort(function(a, b){ return nextBillDate(b) - nextBillDate(a); });
-    var withLimit = l.filter(function(c){ return (Number(c.remainLimit)||0) > 0; });
-    if (!withLimit.length){
-      $('outPickList').innerHTML = '<div class="empty">还没有卡填了「剩余额度」。去「信用卡列表」把每张卡的可用额度填上，才能算分摊。</div>';
-      return;
-    }
-    $('outPickList').innerHTML = '<div class="hint" style="margin:0 0 6px">默认全选有额度的卡；取消勾选的卡不参与分摊。</div>'
-      + '<div class="checkline" style="flex-direction:column;align-items:flex-start;gap:8px">'
-      + withLimit.map(function(c){
-        return '<label style="width:100%;justify-content:space-between;border-bottom:1px dashed #eceff4;padding:6px 0">'
-          + '<span><input type="checkbox" data-out="' + c.id + '" checked style="margin-right:6px">' + HUB.esc(c.bank) + '</span>'
-          + '<span class="mini">额度 ' + money(c.remainLimit) + ' · 下个账单日 ' + fmtDate(nextBillDate(c)) + '</span></label>';
-      }).join('') + '</div>';
+    var tb = $('tblOutAll').querySelector('tbody');
+    var now = new Date();
+    var t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    tb.innerHTML = l.length ? l.map(function(c){
+      var d = nextBillDate(c);
+      var gap = Math.round((d - t0)/864e5);
+      var lim = limitOf(c);
+      return '<tr>'
+        + '<td>' + HUB.esc(c.bank) + '</td>'
+        + '<td>' + fmtDate(d) + '<span class="mini" style="display:block">' + gap + ' 天后出账</span></td>'
+        + '<td><input type="number" step="0.01" data-lim="' + c.id + '" value="' + (lim ? lim : '') + '" placeholder="填剩余额度" style="width:100%;padding:6px 8px;border:1px solid #d8e0ea;border-radius:8px;font-size:14px"></td>'
+        + '<td class="num" data-occ="' + c.id + '">—</td>'
+        + '<td class="num" data-oneed="' + c.id + '">—</td>'
+        + '<td class="num" data-arr="' + c.id + '">—</td>'
+        + '<td><input type="checkbox" data-out="' + c.id + '"></td></tr>';
+    }).join('') : '<tr><td colspan="7" style="text-align:center;color:#a8b3c2">还没有卡片</td></tr>';
   }
 
-  function fmtDate(d){ return d.getFullYear() + '-' + PAD(d.getMonth()+1) + '-' + PAD(d.getDate()); }
-
-  function calcRepay(){
-    var picks = [];
-    Array.prototype.forEach.call($('pickList').querySelectorAll('[data-pick]'), function(el){
-      if (el.checked) picks.push(el.dataset.pick);
-    });
-    var l = cards().filter(function(c){ return picks.indexOf(c.id) >= 0; });
-    if (!l.length){ HUB.toast('先勾选至少一张卡'); return; }
+  function recalcRepay(){
     var fee = (Number($('feeIn').value)||0)/1000;
     var cash = Number($('cashIn').value)||0;
-    var billSum = l.reduce(function(s,c){ return s + (Number(c.billAmount)||0); }, 0);
+
+    /* 待款区：勾选卡的账单汇总 → 要刷总额 */
+    var picked = [];
+    Array.prototype.forEach.call($('tblDebt').querySelectorAll('[data-debt]'), function(el){ if (el.checked) picked.push(el.dataset.debt); });
+    var dl = cards().filter(function(c){ return picked.indexOf(c.id) >= 0; });
+    var billSum = dl.reduce(function(s,c){ return s + (Number(c.billAmount)||0); }, 0);
     var cashUsed = Math.min(cash, billSum);
     var remainBill = billSum - cashUsed;
     var totalNeed = remainBill/(1-fee);
-
-    var rows = l.map(function(c){
+    var needById = {};
+    dl.forEach(function(c){
       var bill = Number(c.billAmount)||0;
       var share = billSum ? bill/billSum : 0;
-      var eff = bill - cashUsed*share;
-      var need = eff/(1-fee);
-      return { bank:c.bank, bill:bill, share:share, eff:eff, need:need };
+      needById[c.id] = (bill - cashUsed*share)/(1-fee);
     });
+    Array.prototype.forEach.call($('tblDebt').querySelectorAll('[data-need]'), function(el){
+      var v = needById[el.dataset.need];
+      if (v === undefined){ el.textContent = '—'; el.style.color = '#a8b3c2'; }
+      else { el.textContent = money(v); el.style.color = '#c0392b'; }
+    });
+    var cashLeft = Math.max(0, cash - billSum);
+    $('debtSum').innerHTML = '<div class="hint" style="margin:0">'
+      + '已勾选 ' + dl.length + ' 张 · 待还合计 <b>' + money(billSum) + '</b> · 现金抵扣 <b>−' + money(cashUsed) + '</b> · 剩余待还 <b>' + money(remainBill) + '</b> · 要刷金额总额 <b style="color:#c0392b">' + money(totalNeed) + '</b>'
+      + (cashLeft > 0 ? ' · 现金有剩 ' + money(cashLeft) + '，本期待还已够' : '')
+      + '</div>';
 
-    /* 出款区只算勾选的卡 */
-    var pickedOut = [];
-    Array.prototype.forEach.call($('outPickList').querySelectorAll('[data-out]'), function(el){
-      if (el.checked) pickedOut.push(el.dataset.out);
-    });
-    var outCards = cards().filter(function(c){
-      return pickedOut.indexOf(c.id) >= 0 && (Number(c.remainLimit)||0) > 0;
-    }).sort(function(a,b){ return nextBillDate(b) - nextBillDate(a); });
-    var totalLimit = outCards.reduce(function(s,c){ return s + (Number(c.remainLimit)||0); }, 0);
+    /* 出款区：勾选卡的剩余额度合计 → 与待还要刷对比 */
+    var limBy = {};
+    Array.prototype.forEach.call($('tblOutAll').querySelectorAll('[data-lim]'), function(el){ limBy[el.dataset.lim] = Number(el.value)||0; });
+    var chosen = [];
+    Array.prototype.forEach.call($('tblOutAll').querySelectorAll('[data-out]'), function(el){ if (el.checked) chosen.push(el.dataset.out); });
+    var totalLimit = chosen.reduce(function(s,id){ return s + (limBy[id]||0); }, 0);
     var usePct = totalLimit ? totalNeed/totalLimit : 0;
-    var outRows = outCards.map(function(c){
-      var lim = Number(c.remainLimit)||0;
-      var need = lim*usePct;
-      return { bank:c.bank, next: nextBillDate(c), limit:lim, need:need, arrive: need*(1-fee) };
+    var overLimit = usePct > 1.0000001;
+    Array.prototype.forEach.call($('tblOutAll').querySelectorAll('[data-out]'), function(el){
+      var id = el.dataset.out;
+      var row = el.closest('tr');
+      var occ = row.querySelector('[data-occ]'), one = row.querySelector('[data-oneed]'), arr = row.querySelector('[data-arr]');
+      if (!el.checked){
+        occ.textContent = '—'; one.textContent = '—'; one.style.color = '#6b7788'; arr.textContent = '—'; return;
+      }
+      if ((limBy[id]||0) <= 0){
+        occ.textContent = '—'; one.textContent = '缺额度'; one.style.color = '#c0392b'; arr.textContent = '—'; return;
+      }
+      var lim = limBy[id]||0;
+      var spend = overLimit ? lim : lim*usePct;   /* 额度不够时每卡最多刷到自己的额度 */
+      occ.textContent = overLimit ? '额度不够' : pct3(usePct);
+      occ.style.color = overLimit ? '#c0392b' : '';
+      one.textContent = money(spend); one.style.color = '#c0392b';
+      arr.textContent = money(spend*(1-fee));
     });
     var shortfall = totalNeed - totalLimit;
-    var cashLeft = Math.max(0, cash - billSum);
-
-    var html = '<div class="panel-title">计算结果</div><div class="kv">'
-      + '<div class="b"><div class="k">本次应还合计</div><div class="v">' + money(billSum) + '</div></div>'
-      + '<div class="b"><div class="k">现金抵扣</div><div class="v">' + money(cashUsed) + '</div></div>'
-      + '<div class="b"><div class="k">还需覆盖</div><div class="v">' + money(remainBill) + '</div></div>'
-      + '<div class="b"><div class="k">需要刷出（含手续费）</div><div class="v" style="color:#c0392b">' + money(totalNeed) + '</div></div>'
-      + '<div class="b"><div class="k">出款卡额度合计</div><div class="v">' + money(totalLimit) + '</div></div>'
-      + '<div class="b"><div class="k">占用额度</div><div class="v">' + pct3(usePct) + '</div></div>'
-      + '</div>';
-    if (cashLeft > 0) html += '<div class="hint" style="color:#1a7f45;font-size:13.5px">现金够还本期待还，无需再刷（剩 ' + money(cashLeft) + '）</div>';
-    if (!pickedOut.length) html += '<div class="hint" style="color:#c0392b;font-size:13.5px">✗ 还没勾选出款卡，勾一张以上才能分摊</div>';
-    else if (!outCards.length) html += '<div class="hint" style="color:#c0392b;font-size:13.5px">✗ 勾选的卡都没填剩余额度，先去「信用卡列表」填上</div>';
-    else if (totalNeed <= 0) html += '<div class="hint" style="color:#1a7f45;font-size:13.5px">✓ 不用出款</div>';
-    else if (shortfall > 0.005) html += '<div class="hint" style="color:#c0392b;font-size:13.5px">✗ 额度不够，还差 ' + money(shortfall) + '</div>';
-    else html += '<div class="hint" style="color:#1a7f45;font-size:13.5px">✓ 额度足够，占用额度 ' + pct3(usePct) + '</div>';
-
-    html += '<div class="table-wrap"><table class="data min"><colgroup><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup>'
-      + '<thead><tr><th>银行</th><th>账单</th><th>占比</th><th>现金分摊后</th><th>该卡应刷</th></tr></thead><tbody>'
-      + rows.map(function(r){
-        return '<tr><td>' + HUB.esc(r.bank) + '</td><td class="num">' + money(r.bill) + '</td><td class="num">' + pct3(r.share) + '</td><td class="num">' + money(r.eff) + '</td><td class="num">' + money(r.need) + '</td></tr>';
-      }).join('') + '</tbody></table></div>';
-
-    $('calcOut').innerHTML = html; $('calcOut').hidden = false;
-
-    var tb = $('tblOut').querySelector('tbody');
-    if (!outRows.length){
-      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#a8b3c2">所有卡的剩余额度都是 0，没法套现</td></tr>';
-    } else {
-      tb.innerHTML = outRows.map(function(r){
-        var capped = r.need > r.limit + 0.001;
-        return '<tr><td>' + HUB.esc(r.bank) + '</td><td class="num">' + r.next.getFullYear() + '-' + PAD(r.next.getMonth()+1) + '-' + PAD(r.next.getDate()) + '</td>'
-          + '<td class="num">' + money(r.limit) + '</td><td class="num">' + money(r.need) + '</td>'
-          + '<td class="num">' + money(r.arrive) + '</td>'
-          + '<td>' + (capped ? '<span class="tag hot">额度不够</span>' : '<span class="tag ok">可刷</span>') + '</td></tr>';
-      }).join('');
-    }
-    stats();
+    var msg;
+    if (totalNeed <= 0) msg = '<div class="hint" style="margin:0;color:#1a7f45;font-size:13.5px">✓ 现金已覆盖本期待还，不用出款</div>';
+    else if (!chosen.length) msg = '<div class="hint" style="margin:0;color:#6b7788;font-size:13.5px">还没勾选出款卡：填好剩余额度后，再勾选要参与分摊的卡（默认不勾）</div>';
+    else if (totalLimit <= 0) msg = '<div class="hint" style="margin:0;color:#c0392b;font-size:13.5px">✗ 勾选的卡还没填剩余额度</div>';
+    else if (shortfall > 0.005) msg = '<div class="hint" style="margin:0;color:#c0392b;font-size:13.5px"><b>额度不够</b> · 要刷 ' + money(totalNeed) + ' ／ 额度合计 ' + money(totalLimit) + '，还差 ' + money(shortfall) + '</div>';
+    else msg = '<div class="hint" style="margin:0;color:#1a7f45;font-size:13.5px">✓ 额度足够 · 占用比例 <b>' + pct3(usePct) + '</b>（要刷 ' + money(totalNeed) + ' ／ 额度合计 ' + money(totalLimit) + '）</div>';
+    $('outHint').innerHTML = msg;
   }
-  $('btnCalc').onclick = calcRepay;
+
+  /* 手填额度、勾选、改费率/现金 都实时重算 */
+  $('tblOutAll').addEventListener('input', function(e){
+    var el = e.target;
+    if (!el.dataset || !el.dataset.lim) return;
+    limitEdits[el.dataset.lim] = Number(el.value)||0;
+    recalcRepay();
+  });
+  $('tblOutAll').addEventListener('change', function(e){
+    var el = e.target;
+    if (el.dataset && el.dataset.lim){
+      var l = cards(), id = el.dataset.lim;
+      for (var i = 0; i < l.length; i++){ if (l[i].id === id){ l[i].remainLimit = Number(el.value)||0; break; } }
+      saveCards(l);
+      return;
+    }
+    if (el.dataset && el.dataset.out) recalcRepay();
+  });
+  $('tblDebt').addEventListener('change', function(e){
+    if (e.target.dataset && e.target.dataset.debt) recalcRepay();
+  });
+  $('feeIn').addEventListener('input', recalcRepay);
+  $('cashIn').addEventListener('input', recalcRepay);
 
   /* ---------- tab3 分期 ---------- */
   function irrMonthly(P, n, M){
