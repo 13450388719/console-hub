@@ -17,7 +17,7 @@ textarea.big{min-height:190px}
   <div class="backbar"><a class="back" href="../个人中控台.html">← 返回中控台</a><a class="back plus" href="memo.html">🔔 备忘</a></div>
   <div class="hd">
     <h1>🎧 温柔朗读</h1>
-    <div class="sub">文字 / 图片 / 文档转语音 · 温柔桃子与广东话仔</div>
+    <div class="sub">文字 / 图片 / 文档转语音 · 晓晓 / 瑶瑶 / 粤语曉佳</div>
   </div>
   <div class="syncbar">
     <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
@@ -48,8 +48,9 @@ textarea.big{min-height:190px}
     <div class="panel-title">③ 语音朗读</div>
     <div class="form-grid three">
       <div><label class="f">音色</label><select id="voice">
-        <option value="peach">温柔桃子（甜美女声）</option>
-        <option value="cantonese">广东话仔（粤语男声）</option>
+        <option value="xiaoxiao" selected>晓晓 Xiaoxiao（甜美女声）</option>
+        <option value="yaoyao">瑶瑶 Yaoyao（温柔女声）</option>
+        <option value="cantonese">粤语 曉佳 HiuGaai（最准粤语女声）</option>
       </select></div>
       <div><label class="f">语速</label><select id="rate">
         <option value="0.5">0.5x</option><option value="0.8">0.8x</option>
@@ -160,22 +161,55 @@ textarea.big{min-height:190px}
   var FEMALE = /xiaoxiao|晓晓|xiaoyi|晓伊|huihui|慧慧|yaoyao|瑶瑶|xiaoqiu|晓秋|yunxia|云夏|nanami|natural/i;
   var MALE = /yunxi|云希|yunjian|云健|yunyang|云扬|yunze|云泽|yunhao|云皓|kangkang|康康/i;
 
+  /* 在线 Natural 版优先（更像真人），同组里先挑 natural 再取第一个 */
+  function naturalFirst(list){
+    return list.filter(function(v){ return /natural|online/i.test(v.name); })[0] || list[0];
+  }
+
+  function isHK(v){
+    return /zh-?HK|zh-?yue|Chinese \(Hong Kong\)|粵語|粤语|HiuGaai|HiuMaan|曉佳|晓佳/i.test(v.lang + ' ' + v.name);
+  }
+
+  /* 是否真的命中用户选的那个音色（用来提示"本机没有，已用替代"） */
+  function voiceMatched(kind, v){
+    if (!v) return false;
+    if (kind === 'cantonese') return isHK(v);
+    if (kind === 'yaoyao') return /yaoyao|瑶瑶/i.test(v.name);
+    return /xiaoxiao|晓晓/i.test(v.name);
+  }
+
   function pickVoice(kind){
     var vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
     if (!vs.length) return null;
+
     if (kind === 'cantonese'){
-      var hk = vs.filter(function(v){ return /zh-?HK|yue|hiugaai|曉佳|晓佳/i.test(v.lang + ' ' + v.name); });
-      if (hk.length) return hk[0];
+      var hk = vs.filter(isHK);
+      if (!hk.length) return null;                     /* 没粤语音包就不硬凑中文念粤语 */
+      var g = hk.filter(function(v){ return /hiugaai|曉佳|晓佳/i.test(v.name); });
+      if (g.length) return naturalFirst(g);
+      var m = hk.filter(function(v){ return /hiumaan|曉嫚|晓嫚/i.test(v.name); });
+      if (m.length) return naturalFirst(m);
+      return hk.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); })[0] || hk[0];
     }
-    var cn = vs.filter(function(v){ return /zh-?CN|zh-?SG|Chinese|中文|普通话/i.test(v.lang + ' ' + v.name); });
+
+    var cn = vs.filter(function(v){ return !isHK(v) && /zh-?CN|zh-?SG|Chinese|中文|普通话/i.test(v.lang + ' ' + v.name); });
+    if (!cn.length) return null;
+
+    if (kind === 'yaoyao'){
+      var yao = cn.filter(function(v){ return /yaoyao|瑶瑶/i.test(v.name); });
+      if (yao.length) return naturalFirst(yao);
+    }
     var xiao = cn.filter(function(v){ return /xiaoxiao|晓晓/i.test(v.name); });
-    if (xiao.length) return xiao[0];                    /* 温柔桃子 = 晓晓（甜美女声），最优先 */
-    var yao = cn.filter(function(v){ return /yaoyao|瑶瑶/i.test(v.name); });
-    if (yao.length) return yao[0];                     /* 没晓晓时用瑶瑶，比慧慧更甜 */
+    if (xiao.length) return naturalFirst(xiao);
+    var yao2 = cn.filter(function(v){ return /yaoyao|瑶瑶/i.test(v.name); });
+    if (yao2.length) return naturalFirst(yao2);          /* 没晓晓就退瑶瑶，比随机女声稳 */
+    if (kind === 'yaoyao'){                              /* 要瑶瑶没有，退到其他女声 */
+      var f2 = cn.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); });
+      if (f2.length) return naturalFirst(f2);
+    }
     var fem = cn.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); });
-    if (fem.length) return fem.filter(function(v){ return /natural/i.test(v.name); })[0] || fem[0];
-    var notMale = cn.filter(function(v){ return !MALE.test(v.name); });
-    return notMale[0] || cn[0] || null;
+    if (fem.length) return naturalFirst(fem);
+    return cn.filter(function(v){ return !MALE.test(v.name); })[0] || cn[0];
   }
 
   /* 按句切分，逐句念；暂停=停下并记住停在哪一句，继续=从那句接着念 */
@@ -257,9 +291,10 @@ textarea.big{min-height:190px}
     CH = chunkText(t);
     playing = true;
     var startIdx = 0;
-    var v = pickVoice($('voice').value);
-    if (!v && $('voice').value === 'cantonese'){
-      $('speakState').textContent = '系统里没找到粤语语音包，已改用默认中文音色朗读';
+    var kind = $('voice').value;
+    var v = pickVoice(kind);
+    if (kind === 'cantonese' && !v){
+      $('speakState').textContent = '本机没装粤语音包，这次用中文音色读；想要粤语请在 Windows 设置里加「中文（香港）」语音';
     }
     hardCancel(function(){ sayFrom(startIdx); });
   }
@@ -295,14 +330,19 @@ textarea.big{min-height:190px}
   $('btnResume').onclick = resumeSpeak;
   $('btnStop').onclick = stopSpeak;
   $('voice').onchange = function(){
-    var v = pickVoice($('voice').value);
-    $('speakState').textContent = '音色已切换：' + voiceLabel(v) + '（下一次朗读生效）';
+    var kind = $('voice').value;
+    var v = pickVoice(kind);
+    $('speakState').textContent = voiceMatched(kind, v)
+      ? '音色已切换：' + voiceLabel(v) + '（下一次朗读生效）'
+      : '本机没有这个音色，先用：' + voiceLabel(v) + '（下一次朗读生效）';
   };
 
   function refreshVoiceLabel(){
     if (playing) return;
-    var v = pickVoice($('voice').value);
-    if (v) $('speakState').textContent = '当前音色：' + voiceLabel(v) + ' · 输入文字后点「开始朗读」';
+    var kind = $('voice').value;
+    var v = pickVoice(kind);
+    if (v) $('speakState').textContent = (voiceMatched(kind, v) ? '当前音色：' : '本机无此音色，暂用：')
+      + voiceLabel(v) + ' · 输入文字后点「开始朗读」';
     else $('speakState').textContent = '系统还没返回语音包列表，稍等或换 Edge 试试；点「开始朗读」仍会用默认中文音色';
   }
   if (window.speechSynthesis){
