@@ -64,10 +64,11 @@ window.HUB = (function () {
       schedulePush();
       try { window.dispatchEvent(new CustomEvent('hub:local', { detail:{key:key} })); } catch(e){}
       maybeBackup(key);
-      /* 弱智吧：保存且内容真的变了，才登记同步请求（改排序等不动内容的操作不触发） */
+      /* 弱智吧：保存且内容真的变了，才挂上同步请求（改排序等不动内容的操作不触发）；
+         请求要等 quotes 真正推上云端后再写，见 pushNow 成功分支 */
       if (key === 'quotes' && !opts.skipSyncReq) {
         try {
-          if (quotesFingerprint(prev) !== quotesFingerprint(val)) markQuoteSyncReq();
+          if (quotesFingerprint(prev) !== quotesFingerprint(val)) quoteReqPending = true;
         } catch(e){}
       }
     }
@@ -87,17 +88,12 @@ window.HUB = (function () {
     return h.toString(16) + ':' + s.length;
   }
 
-  /* 保存触发：写一条 quote_sync_req，定时任务看到 req>last 才去对齐乐享 */
-  var syncReqTimer = null;
-  function markQuoteSyncReq(){
+  /* 保存触发：quotes 推上云端后再写一条 quote_sync_req，定时任务看到 req>last 才去对齐乐享 */
+  var quoteReqPending = false;
+  function quoteReqPut(){
     if (!cloudOn()) return;
-    if (syncReqTimer) clearTimeout(syncReqTimer);
-    syncReqTimer = setTimeout(function(){
-      syncReqTimer = null;
-      if (!cloudOn()) return;
-      rowPut('quote_sync_req', { t: Date.now(), at: nowStamp(), scope:'quotes', by:'save', device: cfg.device || '' })
-        .catch(function(){});
-    }, 1200);
+    rowPut('quote_sync_req', { t: Date.now(), at: nowStamp(), scope:'quotes', by:'save', device: cfg.device || '' })
+      .catch(function(){});
   }
   function get(key, fallback){
     var v = read(key);
@@ -244,6 +240,8 @@ window.HUB = (function () {
       DIRTY = {};
       pushPending = false;
       setStatus('ok','☁️ 已同步 · ' + nowStamp());
+      /* 云端已经有这次改动，再登记同步请求，避免定时任务读到还没推上去的数据 */
+      if (quoteReqPending) { quoteReqPending = false; quoteReqPut(); }
     }).catch(function(e){
       pushPending = false;
       setStatus('off','⚠️ 云端连接失败，暂存本机');
