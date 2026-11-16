@@ -67,7 +67,7 @@ textarea.big{min-height:190px}
       <button class="btn ghost" id="btnResume">继续</button>
       <button class="btn gray" id="btnStop">停止</button>
     </div>
-    <div class="hint" id="speakState">用的是浏览器系统中文语音包。原站的「妙搭平台音色插件」是云能力，静态网页调不到，所以这里如实降级。</div>
+    <div class="hint" id="speakState">温柔桃子＝微软「晓晓」等甜美女声（Edge 里的 Natural 音色），从系统语音包里挑；暂停后能从句中接着读。原站的「妙搭平台音色插件」是云能力，静态网页调不到。</div>
   </div>
 
   <div class="footer-f">原站依赖妙搭平台 AI（音色合成 / 图片 OCR / 文档解析），静态部署后只有 UI、文字编辑与系统音色可用 —— 本页照此降级，并明确标出</div>
@@ -155,42 +155,124 @@ textarea.big{min-height:190px}
     $('upState').textContent = '不支持的文件格式，请上传图片（jpg/png/webp）或 txt';
   }
 
-  /* ---- 朗读（浏览器系统音色） ---- */
-  var speaking = false;
+  /* ---- 朗读（浏览器系统音色，分句播放以便真正暂停/继续） ---- */
+  var FEMALE = /xiaoxiao|晓晓|xiaoyi|晓伊|huihui|慧慧|yaoyao|瑶瑶|xiaoqiu|晓秋|yunxia|云夏|nanami|natural/i;
+  var MALE = /yunxi|云希|yunjian|云健|yunyang|云扬|yunze|云泽|yunhao|云皓|kangkang|康康/i;
+
   function pickVoice(kind){
     var vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
     if (!vs.length) return null;
-    var want = kind === 'cantonese' ? ['zh-HK','zh-TW','yue','zh'] : ['zh-CN','zh-SG','zh'];
-    for (var i=0;i<want.length;i++){
-      var hit = vs.filter(function(v){ return v.lang && v.lang.replace('_','-').indexOf(want[i]) === 0; })[0];
-      if (hit) return hit;
+    if (kind === 'cantonese'){
+      var hk = vs.filter(function(v){ return /zh-?HK|yue|hiugaai|曉佳|晓佳/i.test(v.lang + ' ' + v.name); });
+      if (hk.length) return hk[0];
     }
-    return vs.filter(function(v){ return /chinese|中文|普通话|粤/i.test(v.name + ' ' + v.lang); })[0] || vs[0];
+    var cn = vs.filter(function(v){ return /zh-?CN|zh-?SG|Chinese|中文|普通话/i.test(v.lang + ' ' + v.name); });
+    var fem = cn.filter(function(v){ return FEMALE.test(v.name) && !MALE.test(v.name); });
+    if (fem.length) return fem[0];                      /* 温柔桃子优先：晓晓 / 晓伊 等女声 */
+    var notMale = cn.filter(function(v){ return !MALE.test(v.name); });
+    return notMale[0] || cn[0] || null;
   }
+
+  /* 按句切分，逐句念；暂停=停下并记住停在哪一句，继续=从那句接着念 */
+  var CH = [], cur = 0, playing = false, seq = 0;
+
+  function chunkText(t){
+    var out = [], buf = '';
+    var sents = t.match(/[^。！？；!?;\n]+[。！？；!?;\n]*/g) || [t];
+    sents.forEach(function(s){
+      s = s.replace(/\s+/g, ' ').trim();
+      if (!s) return;
+      if (buf && (buf + s).length > 120){ out.push(buf); buf = s; }
+      else buf += s;
+      if (buf.length >= 120){ out.push(buf); buf = ''; }
+    });
+    if (buf) out.push(buf);
+    return out;
+  }
+
+  function voiceLabel(v){
+    return v ? v.name.replace(/\s*-\s*Chinese.*$/i, '') : '系统默认';
+  }
+
+  function sayFrom(i){
+    if (!playing) return;
+    if (i >= CH.length){
+      playing = false; cur = 0;
+      $('speakState').textContent = '朗读结束（共 ' + CH.length + ' 句）';
+      return;
+    }
+    cur = i;
+    var myToken = seq;
+    var u = new SpeechSynthesisUtterance(CH[i]);
+    var v = pickVoice($('voice').value);
+    if (v){ u.voice = v; u.lang = v.lang; }
+    else u.lang = ($('voice').value === 'cantonese') ? 'zh-HK' : 'zh-CN';
+    u.rate = Number($('rate').value) || 1;
+    u.pitch = PITCH[$('tone').value] || 1;
+    u.onstart = function(){
+      if (myToken !== seq) return;
+      $('speakState').textContent = '正在朗读 ' + (i+1) + '/' + CH.length + '（音色：' + voiceLabel(v) + '）';
+    };
+    u.onend = function(){
+      if (myToken !== seq || !playing) return;
+      sayFrom(i + 1);
+    };
+    u.onerror = function(e){
+      if (myToken !== seq) return;
+      if (e.error === 'interrupted' || e.error === 'canceled') return;
+      playing = false;
+      $('speakState').textContent = '播放失败：' + (e.error || '未知') + '，请检查设备是否装有中文语音包';
+    };
+    speechSynthesis.speak(u);
+  }
+
   function speak(){
     var t = $('txt').value.trim();
     if (!t){ HUB.toast('先输入或粘贴文字'); return; }
     if (!window.speechSynthesis){ $('speakState').textContent = '这个浏览器不支持语音合成'; return; }
+    seq++;
     speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(t);
+    CH = chunkText(t);
+    playing = true;
     var v = pickVoice($('voice').value);
-    if (v){ u.voice = v; u.lang = v.lang; }
-    else if ($('voice').value === 'cantonese') u.lang = 'zh-HK';
-    else u.lang = 'zh-CN';
-    u.rate = Number($('rate').value) || 1;
-    u.pitch = PITCH[$('tone').value] || 1;
-    u.onstart = function(){ speaking = true; $('speakState').textContent = '正在朗读…（音色：' + (v ? v.name : '系统默认') + '）'; };
-    u.onend = function(){ speaking = false; $('speakState').textContent = '朗读结束'; };
-    u.onerror = function(e){ speaking = false; $('speakState').textContent = '播放失败：' + (e.error||'未知') + '，请检查设备是否装有中文语音包'; };
-    speechSynthesis.speak(u);
     if (!v && $('voice').value === 'cantonese'){
       $('speakState').textContent = '系统里没找到粤语语音包，已改用默认中文音色朗读';
     }
+    sayFrom(0);
   }
+
+  function pauseSpeak(){
+    if (!playing){ $('speakState').textContent = '现在没有在朗读'; return; }
+    seq++;                       /* 让本次朗读的 onend 回调全部失效 */
+    speechSynthesis.cancel();    /* 直接掐断声音，不靠 pause()（Edge/Chrome 对长文本 pause 常失灵） */
+    playing = false;
+    $('speakState').textContent = '已暂停在第 ' + (cur+1) + '/' + CH.length + ' 句，点「继续」接着读';
+  }
+
+  function resumeSpeak(){
+    if (playing) return;
+    if (!CH.length){ speak(); return; }
+    playing = true;
+    seq++;
+    speechSynthesis.cancel();
+    sayFrom(Math.min(cur, CH.length - 1));
+  }
+
+  function stopSpeak(){
+    seq++;
+    speechSynthesis.cancel();
+    playing = false; cur = 0;
+    $('speakState').textContent = '已停止';
+  }
+
   $('btnSpeak').onclick = speak;
-  $('btnPause').onclick = function(){ if (speechSynthesis.speaking) { speechSynthesis.pause(); $('speakState').textContent = '已暂停'; } };
-  $('btnResume').onclick = function(){ if (speechSynthesis.paused) { speechSynthesis.resume(); $('speakState').textContent = '继续朗读'; } };
-  $('btnStop').onclick = function(){ speechSynthesis.cancel(); speaking = false; $('speakState').textContent = '已停止'; };
+  $('btnPause').onclick = pauseSpeak;
+  $('btnResume').onclick = resumeSpeak;
+  $('btnStop').onclick = stopSpeak;
+  $('voice').onchange = function(){
+    var v = pickVoice($('voice').value);
+    $('speakState').textContent = '音色已切换：' + voiceLabel(v) + '（下一次朗读生效）';
+  };
 
   if (window.speechSynthesis) speechSynthesis.onvoiceschanged = function(){ /* 触发一次取列表 */ };
   $('btnSync').onclick = HUB.openSyncDialog;
