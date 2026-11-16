@@ -308,26 +308,40 @@ table.data.min{min-width:680px}
 
   $('btnAddCard').onclick = function(){ editCard('c'+Date.now()); };
   $('btnGenMemo').onclick = function(){
-    var cardsL = cards(), memos = HUB.get('memos', []) || [], ids = {};
-    memos.forEach(function(m){ ids[m.id] = true; });
-    var n = 0;
+    var cardsL = cards(), memos = HUB.get('memos', []) || [], map = {};
+    memos.forEach(function(m){ if (m && m.id) map[m.id] = m; });
+    var n = 0, revived = 0;
     cardsL.forEach(function(c){
       var amt = Number(c.billAmount)||0; if (!(amt>0)) return;
-      var due = new Date((c.dueDate||'')+'T23:59:59'); if (isNaN(due)) return;
-      if (!(Date.now() < due.getTime())) return;
       var ge = graceEnd(c); if (ge == null) return;
-      if (Date.now() > ge + 7*864e5) return;
+      /* 宽限期已过就不用再提醒；还款日过了但还在宽限期的必须提醒 */
+      if (Date.now() > ge) return;
       var id = 'auto_' + c.id + '_' + c.dueDate;
-      if (ids[id]) return;
+      var remain = Math.max(5, Math.round((ge - Date.now())/60000) + 1);
+      var when = new Date(Date.now() + remain*60000);
+      var text = c.bank + ' 宽限期到' + (new Date(ge).getMonth()+1) + '月' + new Date(ge).getDate() + '日' + new Date(ge).getHours() + '点';
+      var old = map[id];
+      if (old){
+        /* 已有提醒但被标了完成、宽限期还没过的，重新激活 */
+        if (old.done){
+          old.done = false; old.important = true;
+          if (new Date(String(old.time).replace(/-/g,'/')) .getTime() < Date.now()){
+            old.time = when.getFullYear()+'-'+PAD(when.getMonth()+1)+'-'+PAD(when.getDate())+'T'+PAD(when.getHours())+':'+PAD(when.getMinutes());
+          }
+          revived++;
+        }
+        return;
+      }
       var remind = new Date(ge - 864e5);
-      memos.push({ id:id, auto:true, done:false,
-        text: c.bank + ' 宽限期到' + (new Date(ge).getMonth()+1) + '月' + new Date(ge).getDate() + '日' + new Date(ge).getHours() + '点',
+      if (remind.getTime() < Date.now()) remind = when;   /* 已经在宽限期里：马上提醒 */
+      memos.push({ id:id, auto:true, done:false, important:true,
+        text: text,
         time: remind.getFullYear()+'-'+PAD(remind.getMonth()+1)+'-'+PAD(remind.getDate())+'T'+PAD(remind.getHours())+':'+PAD(remind.getMinutes()),
-        created:Date.now(), important:false });
-      ids[id] = true; n++;
+        created:Date.now() });
+      map[id] = memos[memos.length-1]; n++;
     });
-    if (n) HUB.set('memos', memos);
-    HUB.toast(n ? '已生成 ' + n + ' 条宽限期提醒' : '没有需要生成的提醒');
+    if (n || revived) HUB.set('memos', memos);
+    HUB.toast((n || revived) ? ('已生成 ' + n + ' 条宽限期提醒' + (revived ? '，另恢复 ' + revived + ' 条已完成提醒' : '')) : '没有需要生成的提醒');
   };
 
   /* ---------- tab2 还款测算 ---------- */
