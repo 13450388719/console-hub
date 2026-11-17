@@ -19,6 +19,8 @@
   .tx-box{background:#fff;border-radius:14px;padding:16px;width:100%;max-width:560px;margin-top:10vh;box-shadow:0 16px 44px rgba(16,32,56,.24);}
   .tx-tt{font-weight:700;color:#1a3c6e;font-size:15px;margin-bottom:10px;}
   .tx-box textarea{width:100%;box-sizing:border-box;border:1px solid #d5ddea;border-radius:10px;padding:10px 12px;font-size:15px;line-height:1.7;font-family:inherit;resize:vertical;min-height:132px;}
+  .tx-lab{font-size:12.5px;color:#5b6d86;margin:12px 0 6px;}
+  #txTime{width:100%;box-sizing:border-box;border:1px solid #d5ddea;border-radius:10px;padding:10px 12px;font-size:15px;font-family:inherit;background:#fff;}
   .tx-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;}
 </style>
 </head>
@@ -79,8 +81,10 @@
 
 <div id="txDlg" hidden>
   <div class="tx-box">
-    <div class="tx-tt">✏️ 改备忘内容</div>
+    <div class="tx-tt">✏️ 编辑备忘</div>
     <textarea id="txArea" placeholder="把这条要记的事改清楚…"></textarea>
+    <div class="tx-lab">提醒时间（留空 = 无时间）</div>
+    <input type="datetime-local" id="txTime">
     <div class="tx-btns">
       <button class="btn gray" id="txCancel" type="button">取消</button>
       <button class="btn" id="txSave" type="button">保存</button>
@@ -229,8 +233,7 @@
         + '<input type="checkbox" data-done="' + m.id + '"' + (m.done?' checked':'') + ' style="margin-top:3px">'
         + '<div class="nm" style="font-weight:400;font-size:14.5px;' + (m.done?'text-decoration:line-through':'') + '">' + HUB.esc(m.text) + '</div>'
         + '<div class="x"><a data-star="' + m.id + '">' + (m.important?'取消重要':'设为重要') + '</a>'
-        + '<a data-txt="' + m.id + '">改内容</a>'
-        + '<a data-edit="' + m.id + '">改时间</a>'
+        + '<a data-txt="' + m.id + '">编辑</a>'
         + '<a class="del" data-del="' + m.id + '">删除</a></div></div>'
         + '<div class="src">' + f.txt.replace(f.txt, '<span class="' + f.cls + '">' + f.txt + '</span>') + ' ' + tags.join('') + '</div>'
         + '</div>';
@@ -263,27 +266,16 @@
     Array.prototype.forEach.call($('list').querySelectorAll('[data-txt]'), function(el){
       el.onclick = function(){ openTx(el.dataset.txt); };
     });
-    Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){
-      el.onclick = function(){
-        var l = memos(); l.forEach(function(x){
-          if (x.id !== el.dataset.edit) return;
-          var v = prompt('提醒时间（格式 2026-11-20 17:00，留空=无时间）', (x.time||'').replace('T',' '));
-          if (v === null) return;
-          x.time = v.trim() ? v.trim().replace(' ','T').slice(0,16) : '';
-          x.created = x.created || Date.now();
-        });
-        save(l); render();
-      };
-    });
   }
 
-  /* 改内容：弹窗里改文本，手机上比 prompt 好用 */
+  /* 编辑：弹窗里同时改内容和提醒时间，手机上比 prompt 好用 */
   function openTx(id){
     var list = memos(), it = null;
     list.forEach(function(x){ if (x.id === id) it = x; });
     if (!it) return;
     $('txDlg').dataset.id = id;
     $('txArea').value = it.text || '';
+    $('txTime').value = (it.time || '').slice(0,16);
     $('txDlg').hidden = false;
     setTimeout(function(){ try { $('txArea').focus(); } catch(e){} }, 80);
   }
@@ -294,10 +286,12 @@
     var v = ($('txArea').value || '').trim();
     if (!v){ HUB.toast('内容不能为空'); return; }
     var id = $('txDlg').dataset.id, l = memos(), hit = false;
-    l.forEach(function(x){ if (x.id !== id) return; x.text = v; x.created = x.created || Date.now(); hit = true; });
+    var t = ($('txTime').value || '').trim().slice(0,16);
+    l.forEach(function(x){ if (x.id !== id) return; x.text = v; x.time = t; x.created = x.created || Date.now(); hit = true; });
     if (!hit){ closeTx(); return; }
-    save(l); closeTx(); render(); HUB.toast('已改内容');
+    save(l); closeTx(); render(); HUB.toast('已保存修改');
   };
+  $('txTime').addEventListener('keydown', function(e){ if (e.key === 'Enter') $('txSave').click(); });
   $('txArea').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('txSave').click(); });
 
   $('btnAdd').onclick = function(){
