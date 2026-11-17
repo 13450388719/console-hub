@@ -6,6 +6,21 @@
 <title>备忘提醒系统</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231a6ee0'/><circle cx='32' cy='34' r='16' fill='none' stroke='white' stroke-width='5'/><rect x='29' y='20' width='6' height='10' fill='white'/></svg>">
 <link rel="stylesheet" href="../shared/hub.css?v=20261116h">
+<style>
+  /* 手机端：操作项单独一行，别挤成竖排一串 */
+  @media (max-width:640px){
+    .scard .row1{flex-wrap:wrap;}
+    .scard .x{width:100%;margin-left:0;justify-content:flex-start;gap:16px;margin-top:8px;}
+    .scard .x a{font-size:13px;padding:3px 0;}
+  }
+  /* 改内容弹窗 */
+  #txDlg{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(16,32,56,.45);display:flex;align-items:flex-start;justify-content:center;padding:16px;z-index:1200;overflow:auto;}
+  #txDlg[hidden]{display:none;}
+  .tx-box{background:#fff;border-radius:14px;padding:16px;width:100%;max-width:560px;margin-top:10vh;box-shadow:0 16px 44px rgba(16,32,56,.24);}
+  .tx-tt{font-weight:700;color:#1a3c6e;font-size:15px;margin-bottom:10px;}
+  .tx-box textarea{width:100%;box-sizing:border-box;border:1px solid #d5ddea;border-radius:10px;padding:10px 12px;font-size:15px;line-height:1.7;font-family:inherit;resize:vertical;min-height:132px;}
+  .tx-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:12px;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -60,6 +75,17 @@
   </div>
 
   <div class="footer-f">提醒时间 = 信用卡宽限期截止减 1 天，时刻不变 · 生成规则与原站一致</div>
+</div>
+
+<div id="txDlg" hidden>
+  <div class="tx-box">
+    <div class="tx-tt">✏️ 改备忘内容</div>
+    <textarea id="txArea" placeholder="把这条要记的事改清楚…"></textarea>
+    <div class="tx-btns">
+      <button class="btn gray" id="txCancel" type="button">取消</button>
+      <button class="btn" id="txSave" type="button">保存</button>
+    </div>
+  </div>
 </div>
 
 <script src="../data/seed.js?v=20261116h"></script>
@@ -203,6 +229,7 @@
         + '<input type="checkbox" data-done="' + m.id + '"' + (m.done?' checked':'') + ' style="margin-top:3px">'
         + '<div class="nm" style="font-weight:400;font-size:14.5px;' + (m.done?'text-decoration:line-through':'') + '">' + HUB.esc(m.text) + '</div>'
         + '<div class="x"><a data-star="' + m.id + '">' + (m.important?'取消重要':'设为重要') + '</a>'
+        + '<a data-txt="' + m.id + '">改内容</a>'
         + '<a data-edit="' + m.id + '">改时间</a>'
         + '<a class="del" data-del="' + m.id + '">删除</a></div></div>'
         + '<div class="src">' + f.txt.replace(f.txt, '<span class="' + f.cls + '">' + f.txt + '</span>') + ' ' + tags.join('') + '</div>'
@@ -233,6 +260,9 @@
         save(memos().filter(function(x){ return x.id !== el.dataset.del; })); render();
       };
     });
+    Array.prototype.forEach.call($('list').querySelectorAll('[data-txt]'), function(el){
+      el.onclick = function(){ openTx(el.dataset.txt); };
+    });
     Array.prototype.forEach.call($('list').querySelectorAll('[data-edit]'), function(el){
       el.onclick = function(){
         var l = memos(); l.forEach(function(x){
@@ -246,6 +276,29 @@
       };
     });
   }
+
+  /* 改内容：弹窗里改文本，手机上比 prompt 好用 */
+  function openTx(id){
+    var list = memos(), it = null;
+    list.forEach(function(x){ if (x.id === id) it = x; });
+    if (!it) return;
+    $('txDlg').dataset.id = id;
+    $('txArea').value = it.text || '';
+    $('txDlg').hidden = false;
+    setTimeout(function(){ try { $('txArea').focus(); } catch(e){} }, 80);
+  }
+  function closeTx(){ $('txDlg').hidden = true; $('txDlg').dataset.id = ''; }
+  $('txCancel').onclick = closeTx;
+  $('txDlg').addEventListener('click', function(e){ if (e.target === $('txDlg')) closeTx(); });
+  $('txSave').onclick = function(){
+    var v = ($('txArea').value || '').trim();
+    if (!v){ HUB.toast('内容不能为空'); return; }
+    var id = $('txDlg').dataset.id, l = memos(), hit = false;
+    l.forEach(function(x){ if (x.id !== id) return; x.text = v; x.created = x.created || Date.now(); hit = true; });
+    if (!hit){ closeTx(); return; }
+    save(l); closeTx(); render(); HUB.toast('已改内容');
+  };
+  $('txArea').addEventListener('keydown', function(e){ if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) $('txSave').click(); });
 
   $('btnAdd').onclick = function(){
     var t = ($('inText').value||'').trim();
