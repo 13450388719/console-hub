@@ -44,13 +44,13 @@
       <input type="search" id="q" placeholder="搜客户名 / 电话 / 地址 / 备注…" style="flex:1;min-width:180px">
       <button class="btn" id="btnAdd">＋ 新增客户</button>
       <button class="btn gray" id="btnOrder">保费排序：高→低</button>
-      <button class="btn ghost" id="btnPull">拉取乐享最新</button>
+      <a class="btn ghost" id="btnPull" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center" href="https://lexiangla.com/pages/744313cd79e849b182fab47dbe7a846f?company_from=b10747a0562a11f1adc2321d7b2198c0">打开乐享表格</a>
     </div>
     <div class="hint" id="meta"></div>
   </div>
 
   <div id="list"></div>
-  <div class="footer-f">1 访记录不显示、不参与搜索；2 访（最近一次反馈）显示在备注之上 · 保费 ≥20 万高亮</div>
+  <div class="footer-f">数据源：乐享「客户拜访安排_10月30-31日」原表 · 要改内容请直接改原表，改完叫助手同步一次<br>1 访记录不显示、不参与搜索；2 访（最近一次反馈）显示在备注之上 · 保费 ≥20 万高亮</div>
 </div>
 
 <a class="pill" href="memo.html">🔔 备忘提醒</a>
@@ -106,7 +106,7 @@
 
     var groups = {};
     shown.forEach(function(r){ var k = r.key || '未排期'; (groups[k] = groups[k] || []).push(r); });
-    var keys = Object.keys(groups).sort();
+    var keys = Object.keys(groups).sort().reverse();
 
     if (!keys.length){ $('list').innerHTML = '<div class="empty">没有匹配的客户</div>'; return; }
 
@@ -224,10 +224,6 @@
     sortHigh = !sortHigh;
     this.textContent = sortHigh ? '保费排序：高→低' : '保费排序：低→高';
     render();
-  };
-  $('btnPull').onclick = function(){
-    HUB.toast('原站的「乐享」接口已不可用，这里改为从备份文件导入');
-    setTimeout(function(){ location.href = 'backup.html'; }, 1100);
   };
   $('q').oninput = function(){ curQ = this.value.trim(); render(); };
   $('btnSync').onclick = HUB.openSyncDialog;
