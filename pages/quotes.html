@@ -16,7 +16,7 @@
   <div class="syncbar">
     <div class="sync" data-sync-badge><span class="dot"></span>检测中…</div>
     <button class="btn-mini" id="btnSync">同步设置</button>
-    <button class="btn-mini" id="btnAlign">⤵ 立即同步</button>
+    <button class="btn-mini" id="btnAlign">记得手动同步</button>
   </div>
 
   <div class="stat">
@@ -44,7 +44,7 @@
     <div id="list"></div>
   </div>
 
-  <div class="footer-f">新增与编辑同一套字段：出处 / 正文 / 感悟 / 标签 · 新加的排在最上面（置顶始终优先）<br>与乐享「弱智吧」表格双向同步：保存后内容真有变化会自动登记同步、由定时任务下一班对齐；表格里手工删掉一行 = 这里一并删掉；这里新加的会补到表尾</div>
+  <div class="footer-f">新增与编辑同一套字段：出处 / 正文 / 感悟 / 标签 · 新加的排在最上面（置顶始终优先）<br>与乐享「弱智吧」表格双向同步：保存后内容真有变化会自动登记同步；表格里手工删掉一行 = 这里一并删掉；这里新加的会补到表尾</div>
 </div>
 
 <script src="../data/seed.js?v=20261116h"></script>
@@ -185,8 +185,8 @@
         t2.tag = payload.tag; t2.pinned = payload.pinned; t2.updatedAt = HUB.nowStamp();
       }
       save(o2); m.remove(); render();
-      HUB.toast(isNew ? (HUB.cloudOn() ? '已加入句子库，已登记同步' : '已加入句子库（排在最上面）')
-                      : (HUB.cloudOn() ? '已保存，已登记同步' : '已保存'));
+      HUB.toast(isNew ? (HUB.cloudOn() ? '已加入句子库，记得手动同步' : '已加入句子库（排在最上面）')
+                      : (HUB.cloudOn() ? '已保存，记得手动同步' : '已保存'));
     };
   }
 
@@ -260,27 +260,9 @@
   };
   $('btnSync').onclick = HUB.openSyncDialog;
 
-  /* 立即同步：先把本页句子落云端，再登记一条同步请求，由定时任务与乐享「弱智吧」表格对齐 */
+  /* 手动同步提醒：落表要在对话里叫助手 */
   $('btnAlign').onclick = function(){
-    var btn = this, cfg = null;
-    try { cfg = JSON.parse(localStorage.getItem('hub_v1_cfg') || 'null'); } catch(e){}
-    if (!cfg || !cfg.url || !cfg.anonKey){ HUB.toast('先点「同步设置」把 Supabase 配好'); return; }
-    btn.disabled = true;
-    save(items());                      /* 先确保本地改动进云端，避免同步时丢最新一条 */
-    var body = [{ id:'quote_sync_req', payload:{ t:Date.now(), scope:'quotes', by:'web', device: cfg.device || '' } }];
-    fetch(cfg.url.replace(/\/$/,'') + '/rest/v1/hub_state', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json', apikey:cfg.anonKey, Authorization:'Bearer ' + cfg.anonKey, Prefer:'resolution=merge-duplicates' },
-      body: JSON.stringify(body)
-    }).then(function(r){
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      HUB.toast('已登记同步请求，下次定时对齐（整点 07 分那一班，最长约 1 小时）');
-      btn.textContent = '已提交 ✓';
-      setTimeout(function(){ btn.textContent = '⤵ 立即同步'; btn.disabled = false; }, 4000);
-    }).catch(function(e){
-      HUB.toast('提交失败：' + e.message);
-      btn.disabled = false;
-    });
+    HUB.toast('记得手动同步：在对话里跟助手说「同步」，我当场对齐乐享表格');
   };
   HUB.onRemote(function(){ render(); });
   render();
