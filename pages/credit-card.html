@@ -181,12 +181,12 @@ table.data.min{min-width:680px}
     var ms = ge - Date.now();
     if (ms <= 0){
       var over = -ms, oh = over/36e5;
-      return { txt: oh >= 48 ? '已过 ' + Math.floor(oh/24) + ' 天 ' + Math.round(oh%24) + ' 时' : '已过 ' + Math.max(1, Math.round(oh)) + ' 小时', color:'#8e1b1b' };
+      return { txt: oh >= 48 ? '已过 ' + Math.floor(oh/24) + ' 天 ' + Math.floor(oh%24) + ' 时' : '已过 ' + Math.max(1, Math.round(oh)) + ' 小时', color:'#8e1b1b' };
     }
     var h = ms/36e5;
     if (h < 1) return { txt:'剩 ' + Math.max(1, Math.round(ms/6e4)) + ' 分钟', color:'#c0392b' };
     if (h < 48) return { txt:'剩 ' + Math.round(h) + ' 小时', color: h < 24 ? '#c0392b' : '#d97706' };
-    return { txt:'剩 ' + Math.floor(h/24) + ' 天 ' + Math.round(h%24) + ' 时', color: h < 72 ? '#d97706' : '#5b6d86' };
+    return { txt:'剩 ' + Math.floor(h/24) + ' 天 ' + Math.floor(h%24) + ' 时', color: h < 72 ? '#d97706' : '#5b6d86' };
   }
   function addMonths(d, n){ var r = new Date(d.getTime()); var day = r.getDate(); r.setDate(1); r.setMonth(r.getMonth()+n); var last = new Date(r.getFullYear(), r.getMonth()+1, 0); r.setDate(Math.min(day, last.getDate())); return r; }
   function nextBillDate(c){
