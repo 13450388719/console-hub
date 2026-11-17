@@ -55,7 +55,7 @@ table.data.min{min-width:680px}
       </div>
       <div class="table-wrap"><table class="data" id="tblCards">
         <colgroup><col style="width:12%"><col style="width:6%"><col style="width:8%"><col style="width:7%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:17%"></colgroup>
-        <thead><tr><th>银行</th><th>备注</th><th>额度</th><th>账单日</th><th>还款日</th><th>宽限期</th><th>本期账单</th><th>剩余额度</th><th>状态</th><th>操作</th></tr></thead>
+        <thead><tr><th>银行</th><th>备注</th><th>额度</th><th>账单日</th><th>还款日</th><th>宽限期</th><th>本期账单</th><th>宽限期倒计时</th><th>状态</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table></div>
       <div class="hint">状态判定：还款日当天 23:59 前正常；过了还款日进入宽限期（浅红底）；过宽限期截止为逾期（深红底）。宽限期截止 = 还款日 + 宽限天数，时刻取「宽限时点」。</div>
@@ -170,9 +170,23 @@ table.data.min{min-width:680px}
   function cardState(c){
     var now = Date.now(), ge = graceEnd(c), due = dueTs(c);
     if (ge == null) return { cls:'st-normal', txt:'未设还款日', hours:null };
-    if (now > ge) return { cls:'st-over', txt:'已逾期 ' + Math.round((now-ge)/36e5) + ' 小时', hours:(ge-now)/36e5 };
-    if (due != null && now > due) return { cls:'st-grace', txt:'宽限期内 · 剩 ' + Math.round((ge-now)/36e5) + ' 小时', hours:(ge-now)/36e5 };
-    return { cls:'st-normal', txt:'正常 · 距还款日 ' + Math.round((due-now)/36e5) + ' 小时', hours:(due-now)/36e5 };
+    if (now > ge) return { cls:'st-over', txt:'已逾期', hours:(ge-now)/36e5 };
+    if (due != null && now > due) return { cls:'st-grace', txt:'宽限期内', hours:(ge-now)/36e5 };
+    return { cls:'st-normal', txt:'正常', hours:(due-now)/36e5 };
+  }
+  /* 宽限期倒计时：离「宽限期截止」还剩几个钟头 */
+  function graceCd(c){
+    var ge = graceEnd(c);
+    if (ge == null) return { txt:'—', color:'' };
+    var ms = ge - Date.now();
+    if (ms <= 0){
+      var over = -ms, oh = over/36e5;
+      return { txt: oh >= 48 ? '已过 ' + Math.floor(oh/24) + ' 天 ' + Math.round(oh%24) + ' 时' : '已过 ' + Math.max(1, Math.round(oh)) + ' 小时', color:'#8e1b1b' };
+    }
+    var h = ms/36e5;
+    if (h < 1) return { txt:'剩 ' + Math.max(1, Math.round(ms/6e4)) + ' 分钟', color:'#c0392b' };
+    if (h < 48) return { txt:'剩 ' + Math.round(h) + ' 小时', color: h < 24 ? '#c0392b' : '#d97706' };
+    return { txt:'剩 ' + Math.floor(h/24) + ' 天 ' + Math.round(h%24) + ' 时', color: h < 72 ? '#d97706' : '#5b6d86' };
   }
   function addMonths(d, n){ var r = new Date(d.getTime()); var day = r.getDate(); r.setDate(1); r.setMonth(r.getMonth()+n); var last = new Date(r.getFullYear(), r.getMonth()+1, 0); r.setDate(Math.min(day, last.getDate())); return r; }
   function nextBillDate(c){
@@ -222,7 +236,7 @@ table.data.min{min-width:680px}
         + '<td class="num">' + (c.dueDate||'—') + '</td>'
         + '<td class="num">' + (c.graceDays||0) + ' 天 ' + (c.graceHour||0) + ' 点</td>'
         + '<td class="num">' + (c.billAmount? money(c.billAmount) : '—') + '</td>'
-        + '<td class="num">' + (c.remainLimit!==undefined ? money(c.remainLimit) : '—') + '</td>'
+        + (function(){ var cd = graceCd(c); return '<td class="num"' + (cd.color ? ' style="color:' + cd.color + ';font-weight:600"' : '') + '>' + cd.txt + '</td>'; })()
         + '<td>' + st.txt + '</td>'
         + '<td><a class="op pay" data-pay="' + c.id + '">已还款</a>'
         + '<a class="op" data-edit="' + c.id + '">编辑</a>'
