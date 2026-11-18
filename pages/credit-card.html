@@ -54,8 +54,8 @@ table.data.min{min-width:680px}
         <button class="btn sm gray" id="btnGenMemo">生成宽限期提醒</button>
       </div>
       <div class="table-wrap"><table class="data" id="tblCards">
-        <colgroup><col style="width:12%"><col style="width:6%"><col style="width:8%"><col style="width:7%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:17%"></colgroup>
-        <thead><tr><th>银行</th><th>备注</th><th>额度</th><th>账单日</th><th>还款日</th><th>宽限期</th><th>本期账单</th><th>宽限期倒计时</th><th>状态</th><th>操作</th></tr></thead>
+        <colgroup><col style="width:12%"><col style="width:8%"><col style="width:7%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:10%"><col style="width:14%"><col style="width:9%"></colgroup>
+        <thead><tr><th>银行</th><th>额度</th><th>账单日</th><th>还款日</th><th>宽限期</th><th>本期账单</th><th>宽限期倒计时</th><th>状态</th><th>操作</th><th>备注</th></tr></thead>
         <tbody></tbody>
       </table></div>
       <div class="hint">状态判定：还款日当天 23:59 前正常；过了还款日进入宽限期（浅红底）；过宽限期截止为逾期（深红底）。宽限期截止 = 还款日 + 宽限天数，时刻取「宽限时点」。</div>
@@ -230,7 +230,6 @@ table.data.min{min-width:680px}
       var st = cardState(c);
       return '<tr class="' + st.cls + '">'
         + '<td><b>' + HUB.esc(c.bank) + '</b></td>'
-        + '<td>' + HUB.esc(c.note||'—') + '</td>'
         + '<td class="num">' + (c.limit? (Number(c.limit)).toLocaleString('zh-CN') : '—') + '</td>'
         + '<td class="num">' + (c.billDay||'—') + '</td>'
         + '<td class="num">' + (c.dueDate||'—') + '</td>'
@@ -241,6 +240,7 @@ table.data.min{min-width:680px}
         + '<td><a class="op pay" data-pay="' + c.id + '">已还款</a>'
         + '<a class="op" data-edit="' + c.id + '">编辑</a>'
         + '<a class="op del" data-del="' + c.id + '">删</a></td>'
+        + '<td style="color:#6b7788">' + HUB.esc(c.note||'—') + '</td>'
         + '</tr>';
     }).join('');
     Array.prototype.forEach.call(tb.querySelectorAll('[data-pay]'), function(el){ el.onclick = function(){ markPaid(el.dataset.pay); }; });
