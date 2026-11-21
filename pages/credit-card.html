@@ -19,6 +19,8 @@ table.data.min{min-width:680px}
 .op.del{color:#c0392b}
 .op.pay{color:#0b7a4b;font-weight:600}
 .st-over td .op{color:#fff;text-decoration:underline}
+th[data-sort]{cursor:pointer;user-select:none;white-space:nowrap}
+th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
 </style>
 </head>
 <body>
@@ -111,10 +113,10 @@ table.data.min{min-width:680px}
       <div class="panel-title">② 分期历史记录</div>
       <div class="table-wrap"><table class="data min" id="tblInst">
         <colgroup><col style="width:14%"><col style="width:8%"><col style="width:11%"><col style="width:8%"><col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:10%"><col style="width:8%"><col style="width:9%"></colgroup>
-        <thead><tr><th>银行</th><th>月份</th><th>本金</th><th>期数</th><th>月供</th><th>每期利息</th><th>表面月费率</th><th>年化</th><th>总利息</th><th>操作</th></tr></thead>
+        <thead><tr><th data-sort="bank">银行<span class="ar"></span></th><th data-sort="month">月份<span class="ar"></span></th><th data-sort="P">本金<span class="ar"></span></th><th data-sort="n">期数<span class="ar"></span></th><th data-sort="M">月供<span class="ar"></span></th><th data-sort="I">每期利息<span class="ar"></span></th><th data-sort="surface">表面月费率<span class="ar"></span></th><th data-sort="annual">年化<span class="ar"></span></th><th data-sort="totalInt">总利息<span class="ar"></span></th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table></div>
-      <div class="hint">表面月费率 = 每期利息 ÷ 本金（就是业务员报的那个数）；年化 = 用现金流 IRR 反推的真实成本 × 12（单利近似，不是复利年化）。</div>
+      <div class="hint">点表头可排序（再点一次切升/降）；表面月费率 = 每期利息 ÷ 本金（就是业务员报的那个数）；年化 = 用现金流 IRR 反推的真实成本 × 12（单利近似，不是复利年化）。</div>
     </div>
 
     <div class="panel">
@@ -583,9 +585,26 @@ table.data.min{min-width:680px}
     HUB.set('insts', l); renderInst(); HUB.toast('已存入分期记录');
   };
 
+  var instSort = { key:null, dir:-1 };
+  try { var sv = JSON.parse(localStorage.getItem('cc_inst_sort')||'null'); if (sv && sv.key) instSort = sv; } catch(e){}
+  function instVal(r,k){
+    if (k === 'bank') return (r.bank||'');
+    if (k === 'month') return (r.month||'');
+    if (k === 'surface') return r.P ? (Number(r.I)||0)/Number(r.P) : 0;
+    if (k === 'annual') return (Number(r.irr)||0)*12;
+    return Number(r[k])||0;
+  }
+
   function renderInst(){
     var tb = $('tblInst').querySelector('tbody');
     var l = insts();
+    if (instSort.key){
+      l = l.slice().sort(function(a,b){
+        var va = instVal(a, instSort.key), vb = instVal(b, instSort.key);
+        if (typeof va === 'string') return instSort.dir * va.localeCompare(vb);
+        return instSort.dir * (va - vb);
+      });
+    }
     if (!l.length){ tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#a8b3c2">还没有分期记录</td></tr>'; return; }
     tb.innerHTML = l.map(function(r){
       return '<tr><td>' + HUB.esc(r.bank) + '</td><td>' + HUB.esc(r.month||'—') + '</td>'
@@ -596,7 +615,18 @@ table.data.min{min-width:680px}
         + '<td class="num" style="color:#c0392b">' + money(r.totalInt) + '</td>'
         + '<td><a data-delin="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:12.5px">删除</a></td></tr>';
     }).join('');
-    Array.prototype.forEach.call(tb.querySelectorAll('[data-delin]'), function(el){
+    Array.prototype.forEach.call($('tblInst').querySelectorAll('th[data-sort]'), function(th){
+    var ar = th.querySelector('.ar');
+    ar.textContent = (instSort.key === th.dataset.sort) ? (instSort.dir > 0 ? '↑' : '↓') : '';
+    th.onclick = function(){
+      var k = th.dataset.sort;
+      if (instSort.key === k) instSort.dir = -instSort.dir;
+      else { instSort.key = k; instSort.dir = (k === 'bank' || k === 'month') ? 1 : -1; }
+      try { localStorage.setItem('cc_inst_sort', JSON.stringify(instSort)); } catch(e){}
+      renderInst();
+    };
+  });
+  Array.prototype.forEach.call(tb.querySelectorAll('[data-delin]'), function(el){
       el.onclick = function(){
         if (!confirm('删除这条分期记录？')) return;
         HUB.set('insts', insts().filter(function(x){ return x.id !== el.dataset.delin; }));
