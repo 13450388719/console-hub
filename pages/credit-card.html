@@ -110,11 +110,11 @@ table.data.min{min-width:680px}
     <div class="panel">
       <div class="panel-title">② 分期历史记录</div>
       <div class="table-wrap"><table class="data min" id="tblInst">
-        <colgroup><col style="width:15%"><col style="width:9%"><col style="width:10%"><col style="width:9%"><col style="width:11%"><col style="width:11%"><col style="width:13%"><col style="width:9%"><col style="width:13%"></colgroup>
-        <thead><tr><th>银行</th><th>月份</th><th>本金</th><th>期数</th><th>月供</th><th>每期利息</th><th>真实月利率</th><th>总利息</th><th>操作</th></tr></thead>
+        <colgroup><col style="width:14%"><col style="width:8%"><col style="width:11%"><col style="width:8%"><col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:10%"><col style="width:8%"><col style="width:9%"></colgroup>
+        <thead><tr><th>银行</th><th>月份</th><th>本金</th><th>期数</th><th>月供</th><th>每期利息</th><th>表面月费率</th><th>年化</th><th>总利息</th><th>操作</th></tr></thead>
         <tbody></tbody>
       </table></div>
-      <div class="hint">真实月利率由现金流 IRR 二分法反推，年化 = 月利率 × 12（单利近似，不是复利年化）。</div>
+      <div class="hint">表面月费率 = 每期利息 ÷ 本金（就是业务员报的那个数）；年化 = 用现金流 IRR 反推的真实成本 × 12（单利近似，不是复利年化）。</div>
     </div>
 
     <div class="panel">
@@ -563,8 +563,7 @@ table.data.min{min-width:680px}
         + '<div class="b"><div class="k">总还款 T</div><div class="v">' + money(r.T) + '</div></div>'
         + '<div class="b"><div class="k">总利息 TI</div><div class="v" style="color:#c0392b">' + money(r.TI) + '</div></div>'
         + '<div class="b"><div class="k">表面月费率</div><div class="v">' + pct3(r.surface) + '</div></div>'
-        + '<div class="b"><div class="k">真实月利率（IRR）</div><div class="v" style="color:#1a6ee0">' + pct3(r.irr) + '</div></div>'
-        + '<div class="b"><div class="k">年化（×12 单利）</div><div class="v" style="color:#c0392b">' + pct3(r.annual) + '</div></div>'
+        + '<div class="b"><div class="k">年化（真实，×12 单利）</div><div class="v" style="color:#c0392b">' + pct3(r.annual) + '</div></div>'
         + '</div></div>';
     }).join('');
     $('instOut').innerHTML = html;
@@ -580,19 +579,20 @@ table.data.min{min-width:680px}
     var l = insts();
     l.unshift({ id:'i'+Date.now(), bank:bank.trim(), month:(month||'').trim(), n:Math.round(r.n),
       P:Math.round(r.P*100)/100, M:Math.round(r.M*100)/100, I:Math.round(r.I*100)/100,
-      totalInt:Math.round(r.TI*100)/100, irr:r.irr });
+      totalInt:Math.round(r.TI*100)/100, irr:r.irr, surface:r.surface });
     HUB.set('insts', l); renderInst(); HUB.toast('已存入分期记录');
   };
 
   function renderInst(){
     var tb = $('tblInst').querySelector('tbody');
     var l = insts();
-    if (!l.length){ tb.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#a8b3c2">还没有分期记录</td></tr>'; return; }
+    if (!l.length){ tb.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#a8b3c2">还没有分期记录</td></tr>'; return; }
     tb.innerHTML = l.map(function(r){
       return '<tr><td>' + HUB.esc(r.bank) + '</td><td>' + HUB.esc(r.month||'—') + '</td>'
         + '<td class="num">' + money(r.P) + '</td><td class="num">' + (r.n||'—') + '</td>'
         + '<td class="num">' + money(r.M) + '</td><td class="num">' + money(r.I) + '</td>'
-        + '<td class="num" style="color:#1a6ee0">' + (r.irr? pct3(r.irr) : '—') + '</td>'
+        + '<td class="num">' + (r.P ? pct3((r.I||0)/r.P) : '—') + '</td>'
+        + '<td class="num" style="color:#1a6ee0">' + (r.irr? pct3(r.irr*12) : '—') + '</td>'
         + '<td class="num" style="color:#c0392b">' + money(r.totalInt) + '</td>'
         + '<td><a data-delin="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:12.5px">删除</a></td></tr>';
     }).join('');
