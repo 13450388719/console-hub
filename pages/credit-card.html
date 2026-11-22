@@ -333,8 +333,7 @@ th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
       /* 宽限期已过就不用再提醒；还款日过了但还在宽限期的必须提醒 */
       if (Date.now() > ge) return;
       var id = 'auto_' + c.id + '_' + c.dueDate;
-      var remain = Math.max(5, Math.round((ge - Date.now())/60000) + 1);
-      var when = new Date(Date.now() + remain*60000);
+      var when = new Date(Date.now() + 5*60000);   /* 已在宽限期：5 分钟后即提醒 */
       var text = c.bank + ' 宽限期到' + (new Date(ge).getMonth()+1) + '月' + new Date(ge).getDate() + '日' + new Date(ge).getHours() + '点';
       var old = map[id];
       if (old){
