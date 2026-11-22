@@ -40,6 +40,14 @@
 .nav{display:flex;gap:8px;justify-content:space-between;margin-top:12px}
 .pill2{font-size:11px;color:#5b6d86;background:#f1f5fb;border-radius:20px;padding:3px 10px}
 .empty{color:#93a1b4;font-size:13px;padding:26px 0;text-align:center}
+.kp{background:#fff;border:1px solid #e6ecf5;border-radius:10px;margin-top:8px;overflow:hidden}
+.kp .hd2{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:pointer;font-size:13.5px;color:#22354f}
+.kp .hd2 b{font-weight:600}
+.kp .cnt{font-size:12px;color:#1a6ee0;background:#eef4ff;border-radius:20px;padding:2px 9px}
+.kp .body2{display:none;border-top:1px solid #eef2f8;padding:8px 12px 12px}
+.kp.open .body2{display:block}
+.kp .yy{font-size:11.5px;color:#93a1b4;margin:8px 0 3px}
+.kp .qi{font-size:12.5px;color:#3c5171;line-height:1.5;padding:4px 0 4px 8px;border-left:2px solid #e6ecf5;margin-bottom:4px}
 </style>
 </head>
 <body>
@@ -69,6 +77,9 @@
       <button data-s="exam">考试状态</button>
     </div>
     <button class="btn" id="btnImport">导入题库</button>
+    <button class="btn" id="btnExport">导出记录</button>
+    <button class="btn" id="btnImportRec">导入记录</button>
+    <button class="btn" id="btnKp">知识点浓度</button>
   </div>
 
   <div id="stage"><div class="empty">点「开始一组」开练。每组现抽 10 题、按年份摊平，组不存档；档位与笔记跟着每一题走。</div></div>
@@ -133,7 +144,7 @@
   function shuffle(a){ a = a.slice(); for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var x=a[i];a[i]=a[j];a[j]=x; } return a; }
   function balance(pool, n){
     var by = {}, years = [];
-    pool.forEach(function(q){ var y = q.year || '未知'; if (!by[y]){ by[y]=[]; years.push(y); } by[y].push(q); });
+    pool.forEach(function(q){ var y = q.paper || (q.id||'').split('_')[0] || '未知'; if (!by[y]){ by[y]=[]; years.push(y); } by[y].push(q); });
     years = years.sort();
     years.forEach(function(y){ by[y] = shuffle(by[y]); });
     var out = [];
@@ -234,6 +245,7 @@
   function render(){
     stats();
     var st = $('stage');
+    if (S.mode === 'kp'){ st.innerHTML = renderKp(); bindKp(); return; }
     if (S.mode === 'idle'){ return; }
     if (S.result){ st.innerHTML = renderResult(); bindResult(); return; }
     st.innerHTML = renderQuestion();
@@ -341,6 +353,83 @@
     render();
   }
 
+  /* ---------- 知识点浓度 ---------- */
+  function renderKp(){
+    var all = items(), map = {};
+    all.forEach(function(q){
+      var ks = q.kp && q.kp.length ? q.kp : ['未分类'];
+      ks.forEach(function(k){ (map[k] = map[k] || []).push(q); });
+    });
+    var rows = Object.keys(map).map(function(k){ return { k:k, list:map[k] }; })
+      .sort(function(a,b){ return b.list.length - a.list.length || a.k.localeCompare(b.k); });
+    if (!rows.length) return '<div class="empty">题库为空，先导入题目。</div>';
+    var html = '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>知识点浓度</b></div>'
+      + '<div class="meta">以知识点为单位，统计 ' + (FILE_BANK.items.length + D.bank.length) + ' 题里各知识点的出现次数；点开看每一年以什么题出现。按次数从多到少排。</div></div>';
+    rows.forEach(function(r, idx){
+      var byYear = {};
+      r.list.forEach(function(q){ var y = q.year || '未知'; (byYear[y] = byYear[y] || []).push(q); });
+      var body = Object.keys(byYear).sort().reverse().map(function(y){
+        return '<div class="yy">' + y + ' 年（' + byYear[y].length + ' 题）</div>'
+          + byYear[y].sort(function(a,b){ return a.id.localeCompare(b.id); }).map(function(q){
+              var tn = { single:'单选', multi:'多选', judge:'判断', essay:'问答' }[q.type] || '';
+              return '<div class="qi">' + (q.paper || '') + ' · ' + tn + '第' + q.id.split('_').pop() + '题　' + esc((q.q || '').slice(0, 46)) + '…</div>';
+            }).join('');
+      }).join('');
+      html += '<div class="kp" data-kp="' + idx + '"><div class="hd2"><b>' + esc(r.k) + '</b><span class="cnt">' + r.list.length + ' 题</span></div>'
+        + '<div class="body2">' + body + '</div></div>';
+    });
+    return html;
+  }
+  function bindKp(){
+    Array.prototype.forEach.call($('stage').querySelectorAll('.kp .hd2'), function(h){
+      h.onclick = function(){ h.parentNode.classList.toggle('open'); };
+    });
+  }
+
+  /* ---------- 导出 / 导入记录 ---------- */
+  function exportAll(){
+    var out = { app:'console-hub/exam', kind:'认通基刷题记录', exportedAt:HUB.nowStamp(), total:items().length, records:[] };
+    items().forEach(function(q){
+      var p = D.prog[q.id] || null;
+      out.records.push({
+        id:q.id, paper:q.paper, year:q.year, type:q.type, q:q.q, opts:q.opts, ans:q.ans, kp:q.kp,
+        note: D.notes[q.id] || '',
+        lv: p ? p.lv : null, due: p ? p.due : null, last: p ? p.last : null,
+        hist: p ? p.hist : []
+      });
+    });
+    var txt = JSON.stringify(out, null, 1);
+    var blob = new Blob([txt], { type:'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '认通基刷题记录-' + HUB.todayStr() + '.json';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 500);
+    HUB.toast('已导出 ' + out.records.length + ' 题记录');
+  }
+
+  function importRecords(j){
+    var recs = j.records || j.items || [];
+    var n = 0, notes = 0;
+    recs.forEach(function(r){
+      if (!r || !r.id) return;
+      if (r.note){ D.notes[r.id] = r.note; notes++; }
+      if (r.lv != null){
+        var p = D.prog[r.id];
+        var hist = r.hist || [];
+        if (!p){ D.prog[r.id] = { lv:r.lv, due:r.due || '', last:r.last || '', hist:hist }; n++; }
+        else {
+          var seen = {};
+          p.hist.forEach(function(h){ seen[h.d + '|' + h.ok] = 1; });
+          hist.forEach(function(h){ if (!seen[h.d + '|' + h.ok]) p.hist.push(h); });
+          if ((Number(r.last) || 0) >= 0 && String(r.last || '') >= String(p.last || '')){ p.lv = r.lv; p.due = r.due || p.due; p.last = r.last || p.last; }
+        }
+      }
+    });
+    save(); stats();
+    alert('导入完成：档位 ' + n + ' 题，笔记 ' + notes + ' 条。');
+  }
+
   /* ---------- 交卷 ---------- */
   function submit(){
     var answered = 0, right = 0, unknown = 0, wrong = [];
@@ -410,6 +499,26 @@
   };
 
   /* ---------- 启动 ---------- */
+  $('btnExport').onclick = exportAll;
+  $('btnKp').onclick = function(){
+    S = { mode:'kp', qs:[], cur:0, ans:{}, judged:{} };
+    render();
+  };
+  var fileRec = document.createElement('input');
+  fileRec.type = 'file'; fileRec.accept = '.json,application/json'; fileRec.style.display = 'none';
+  document.body.appendChild(fileRec);
+  $('btnImportRec').onclick = function(){ fileRec.click(); };
+  fileRec.onchange = function(){
+    var f = fileRec.files && fileRec.files[0]; if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){
+      try { importRecords(JSON.parse(String(fr.result))); }
+      catch(e){ alert('导入失败：' + e.message); }
+      fileRec.value = '';
+    };
+    fr.readAsText(f, 'utf-8');
+  };
+
   $('btnStart').onclick = function(){ startSession(false); };
   $('btnMock').onclick = function(){ startSession(true); };
 
