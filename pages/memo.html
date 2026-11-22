@@ -168,15 +168,22 @@
     cards.forEach(function(c){
       var amt = Number(c.billAmount)||0;
       if (!(amt > 0)) return;
-      var due = new Date((c.dueDate||'') + 'T23:59:59');
-      if (isNaN(due)) return;
+      if (isNaN(new Date((c.dueDate||'') + 'T23:59:59'))) return;
       var now = Date.now();
-      if (!(now < due.getTime())) return;          // 已过账单日不再生成
       var ge = graceEndOf(c); if (!ge) return;
       if (now > addDays(ge, 7).getTime()) return;  // 超宽限期 7 天不再生成
       var id = 'auto_' + c.id + '_' + c.dueDate;
-      if (ids[id]) return;
       var remind = addDays(ge, -1);                // 减 1 天，时刻不变
+      if (remind.getTime() < now) remind = new Date(now + 5*60000);  // 已经进了宽限期：马上提醒
+      if (ids[id]){
+        var old = list.filter(function(m){ return m.id === id; })[0];
+        if (old && old.done && now <= ge.getTime()){   // 被标完成但还在宽限期：恢复
+          old.done = false;
+          old.time = remind.getFullYear()+'-'+HUB.pad2(remind.getMonth()+1)+'-'+HUB.pad2(remind.getDate())+'T'+HUB.pad2(remind.getHours())+':'+HUB.pad2(remind.getMinutes());
+          created++;
+        }
+        return;
+      }
       var pad = HUB.pad2;
       var time = remind.getFullYear()+'-'+pad(remind.getMonth()+1)+'-'+pad(remind.getDate())
                + 'T' + pad(remind.getHours()) + ':' + pad(remind.getMinutes());
