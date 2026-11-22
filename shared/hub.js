@@ -8,13 +8,13 @@ window.HUB = (function () {
   'use strict';
 
   var KEYS = ['quotes','memos','cards','insts','repay_records','funds','visits',
-              'shopping','news','news_saved','news_cols','news_crowd','auto_memo_ids','offers'];
+              'shopping','news','news_saved','news_cols','news_crowd','auto_memo_ids','offers','exam'];
 
   var NAME = {
     cards:'信用卡', memos:'备忘提醒', insts:'分期记录', repay_records:'还款记录',
     auto_memo_ids:'自动提醒标记', quotes:'弱智吧', funds:'指数 / 基金观察',
     shopping:'购物计价', visits:'客户拜访', news:'资讯镜像', news_saved:'资讯收藏',
-    news_cols:'资讯栏目', news_crowd:'拥挤度历史', offers:'信用卡优惠'
+    news_cols:'资讯栏目', news_crowd:'拥挤度历史', offers:'信用卡优惠', exam:'认通基刷题'
   };
 
   var PRECOMPUTED = {};          // key -> value 缓存
