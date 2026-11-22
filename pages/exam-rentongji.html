@@ -70,7 +70,7 @@
   </div>
 
   <div class="ctl">
-    <button class="btn pri" id="btnStart">开始一组（10 题）</button>
+    <button class="btn pri" id="btnStart">开始一组（12 题）</button>
     <button class="btn" id="btnMock">模拟考（只抽练过的）</button>
     <div class="tg" id="tgState">
       <button data-s="study" class="on">学习状态</button>
@@ -82,7 +82,7 @@
     <button class="btn" id="btnKp">知识点浓度</button>
   </div>
 
-  <div id="stage"><div class="empty">点「开始一组」开练。每组现抽 10 题、按年份摊平，组不存档；档位与笔记跟着每一题走。</div></div>
+  <div id="stage"><div class="empty">点「开始一组」开练。每组现抽 12 题、每份卷各出 1 题，组不存档；档位与笔记跟着每一题走。</div></div>
   <footer style="text-align:center;color:#9aa8bb;font-size:11px;margin-top:28px">
     组是临时的，档位是永久的 · 答对升一档，15 天档答对即毕业；答错不管在哪档都回 1 天档
   </footer>
@@ -140,22 +140,33 @@
     $('sGrad').textContent = grad;
   }
 
-  /* ---------- 抽题：按年份摊平 ---------- */
+  /* ---------- 抽题：按卷摊平，每份卷各出 1 题 ---------- */
+  var N = 12;
   function shuffle(a){ a = a.slice(); for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var x=a[i];a[i]=a[j];a[j]=x; } return a; }
   function balance(pool, n){
     var by = {}, years = [];
     pool.forEach(function(q){ var y = q.paper || (q.id||'').split('_')[0] || '未知'; if (!by[y]){ by[y]=[]; years.push(y); } by[y].push(q); });
     years = years.sort();
     years.forEach(function(y){ by[y] = shuffle(by[y]); });
-    var out = [];
+    var out = [], used = {};
     while (out.length < n){
       var added = false;
+      var round = out.length === 0 ? 1 : 2;   // 第 1 轮：每份卷只出 1 题；不足再从有余额的卷补
       for (var i=0;i<years.length;i++){
         var y = years[i];
-        if (by[y] && by[y].length){ out.push(by[y].shift()); added = true; if (out.length >= n) break; }
+        if (!by[y] || !by[y].length) continue;
+        if (round === 1 && used[y]) continue;
+        used[y] = 1;
+        out.push(by[y].shift()); added = true; if (out.length >= n) break;
       }
       if (!added) break;
     }
+    return out;
+  }
+  /* 每份卷最多 1 题：同卷重复出现的丢掉，先出现的优先 */
+  function onePerPaper(list){
+    var seen = {}, out = [];
+    list.forEach(function(q){ var k = q.paper || (q.id||'').split('_')[0] || '未知'; if (seen[k]) return; seen[k] = 1; out.push(q); });
     return out;
   }
 
@@ -163,7 +174,7 @@
     var all = items(), t = today();
     if (mock){
       var practiced = all.filter(function(q){ return D.prog[q.id]; });
-      return { qs: balance(practiced, 10), mock:true };
+      return { qs: onePerPaper(balance(practiced, N)), mock:true };
     }
     var dueQ = [], fresh = [], later = [];
     all.forEach(function(q){
@@ -173,9 +184,12 @@
       else if (p.due && p.due <= t) dueQ.push(q);
       else later.push(q);
     });
-    var a = balance(dueQ, 10);
-    if (a.length < 10) a = a.concat(balance(fresh, 10 - a.length));
-    if (a.length < 10) a = a.concat(balance(later, 10 - a.length));
+    var a = onePerPaper(balance(dueQ, N).concat(balance(fresh, N)).concat(balance(later, N)));
+    if (a.length < N){
+      var have = {}; a.forEach(function(q){ have[q.id] = 1; });
+      var extra = shuffle(all.filter(function(q){ if (have[q.id]) return false; var p = D.prog[q.id]; return !(p && p.lv >= GRAD); }));
+      a = a.concat(extra.slice(0, N - a.length));
+    }
     return { qs: a, mock:false };
   }
 
