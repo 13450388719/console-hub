@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>考试 · 认通基</title>
+<link rel="stylesheet" href="../shared/hub.css?v=20261116h">
+<style>
+.wrap{max-width:900px;margin:0 auto;padding:0 14px 40px}
+.hd{display:flex;justify-content:space-between;align-items:flex-start;margin:10px 0 12px}
+.hd h1{font-size:20px;margin:0 0 4px}
+.hd .sub{font-size:12px;color:#93a1b4}
+.bar{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:8px;margin:12px 0}
+.bar .b{background:#f7f9fd;border:1px solid #e6ecf5;border-radius:9px;padding:8px 10px}
+.bar .b .k{font-size:11px;color:#93a1b4}
+.bar .b .v{font-size:16px;font-weight:700;color:#1a3c6e;margin-top:2px}
+.ctl{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 16px}
+.btn{font:inherit;font-size:13px;padding:8px 14px;border-radius:9px;border:1px solid #d5dbe5;background:#fff;color:#3c5171;cursor:pointer}
+.btn.pri{background:#1a6ee0;border-color:#1a6ee0;color:#fff;font-weight:600}
+.btn.on{background:#e8f0fe;border-color:#1a6ee0;color:#1a6ee0;font-weight:600}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.tg{display:inline-flex;border:1px solid #d5dbe5;border-radius:9px;overflow:hidden}
+.tg button{font:inherit;font-size:12.5px;padding:7px 12px;border:0;background:#fff;color:#3c5171;cursor:pointer}
+.tg button.on{background:#1a6ee0;color:#fff;font-weight:600}
+.q{background:#fff;border:1px solid #e6ecf5;border-radius:12px;padding:14px 14px 10px;margin-top:10px}
+.q .tag{display:inline-block;font-size:11px;color:#1a6ee0;background:#eef4ff;border-radius:6px;padding:2px 7px;margin-bottom:8px}
+.q .stem{font-size:14.5px;line-height:1.6;color:#22354f;margin-bottom:10px}
+.opt{display:block;width:100%;text-align:left;font:inherit;font-size:13.5px;line-height:1.5;padding:9px 11px;margin:6px 0;border:1px solid #e0e7f2;border-radius:9px;background:#fbfcfe;color:#2b3f5c;cursor:pointer}
+.opt.sel{border-color:#1a6ee0;background:#eef4ff}
+.opt.ok{border-color:#0b7a4b;background:#eaf7f0;color:#0b7a4b;font-weight:600}
+.opt.bad{border-color:#c0392b;background:#fdeceb;color:#c0392b}
+.opt:disabled{cursor:default}
+.res{font-size:13px;margin:8px 0;padding:8px 10px;border-radius:8px;line-height:1.55}
+.res.ok{background:#eaf7f0;color:#0b7a4b}
+.res.bad{background:#fdeceb;color:#c0392b}
+.res.nd{background:#fff7e6;color:#8a5b00}
+.note{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;padding:9px 10px;border:1px solid #e0e7f2;border-radius:9px;background:#fbfcfe;color:#2b3f5c;min-height:70px;resize:vertical}
+.meta{font-size:11.5px;color:#93a1b4;line-height:1.6;margin-top:8px}
+.hist{margin:6px 0 0;padding-left:16px;font-size:11.5px;color:#7c8ca3;line-height:1.6}
+.nav{display:flex;gap:8px;justify-content:space-between;margin-top:12px}
+.pill2{font-size:11px;color:#5b6d86;background:#f1f5fb;border-radius:20px;padding:3px 10px}
+.empty{color:#93a1b4;font-size:13px;padding:26px 0;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="backbar"><a class="back" href="../个人中控台.html">← 返回中控台</a><a class="back plus" href="memo.html">🔔 备忘</a></div>
+
+  <div class="hd">
+    <div>
+      <h1>📝 考试 · 认通基</h1>
+      <div class="sub">认证通用基础 · 真题间隔复习（1 → 3 → 7 → 15 → 毕业）</div>
+    </div>
+    <div class="hd-right"><div class="sync" data-sync-badge><span class="dot"></span>检测中…</div></div>
+  </div>
+
+  <div class="bar">
+    <div class="b"><div class="k">题库</div><div class="v" id="sBank">—</div></div>
+    <div class="b"><div class="k">练过</div><div class="v" id="sDone">0</div></div>
+    <div class="b"><div class="k">今日到期</div><div class="v" id="sDue">0</div></div>
+    <div class="b"><div class="k">毕业</div><div class="v" id="sGrad">0</div></div>
+  </div>
+
+  <div class="ctl">
+    <button class="btn pri" id="btnStart">开始一组（10 题）</button>
+    <button class="btn" id="btnMock">模拟考（只抽练过的）</button>
+    <div class="tg" id="tgState">
+      <button data-s="study" class="on">学习状态</button>
+      <button data-s="exam">考试状态</button>
+    </div>
+    <button class="btn" id="btnImport">导入题库</button>
+  </div>
+
+  <div id="stage"><div class="empty">点「开始一组」开练。每组现抽 10 题、按年份摊平，组不存档；档位与笔记跟着每一题走。</div></div>
+  <footer style="text-align:center;color:#9aa8bb;font-size:11px;margin-top:28px">
+    组是临时的，档位是永久的 · 答对升一档，15 天档答对即毕业；答错不管在哪档都回 1 天档
+  </footer>
+</div>
+
+<input type="file" id="fileBank" accept=".json,application/json" style="display:none">
+<script src="../data/seed.js?v=20261116h"></script>
+<script src="../shared/hub.js?v=20261116h"></script>
+<script>
+(function(){
+  'use strict';
+  var $ = function(id){ return document.getElementById(id); };
+  var PAD = HUB.pad2;
+  function today(){ return HUB.todayStr ? HUB.todayStr() : new Date().toISOString().slice(0,10); }
+  function addDays(dayStr, n){
+    var d = new Date(dayStr + 'T00:00:00'); d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + PAD(d.getMonth()+1) + '-' + PAD(d.getDate());
+  }
+  var LV = [1,3,7,15];           // 档位间隔（天）；lv=4 即 15 天档，答对毕业（lv=5）
+  var GRAD = 5;
+
+  /* ---------- 数据 ---------- */
+  var D = HUB.get('exam', null) || {};
+  if (!D.prog) D.prog = {};
+  if (!D.notes) D.notes = {};
+  if (!D.bank) D.bank = [];
+  function save(){ HUB.set('exam', D); }
+  var FILE_BANK = { items: [] };
+
+  function items(){
+    var a = (FILE_BANK.items || []).concat(D.bank || []);
+    var seen = {}, out = [];
+    a.forEach(function(q){ if (q && q.id && !seen[q.id]){ seen[q.id] = 1; out.push(q); } });
+    return out;
+  }
+  function byId(id){ var l = items(); for (var i=0;i<l.length;i++) if (l[i].id===id) return l[i]; return null; }
+  function progOf(id){
+    if (!D.prog[id]) D.prog[id] = { lv:0, due:today(), last:'', hist:[] };
+    if (!D.prog[id].hist) D.prog[id].hist = [];
+    return D.prog[id];
+  }
+
+  /* ---------- 统计 ---------- */
+  function stats(){
+    var all = items(), practiced = 0, due = 0, grad = 0, t = today();
+    Object.keys(D.prog).forEach(function(id){
+      var p = D.prog[id]; if (!p) return;
+      practiced++;
+      if (p.lv >= GRAD) grad++;
+      else if (p.due && p.due <= t) due++;
+    });
+    $('sBank').textContent = all.length || '—';
+    $('sDone').textContent = practiced;
+    $('sDue').textContent = due;
+    $('sGrad').textContent = grad;
+  }
+
+  /* ---------- 抽题：按年份摊平 ---------- */
+  function shuffle(a){ a = a.slice(); for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var x=a[i];a[i]=a[j];a[j]=x; } return a; }
+  function balance(pool, n){
+    var by = {}, years = [];
+    pool.forEach(function(q){ var y = q.year || '未知'; if (!by[y]){ by[y]=[]; years.push(y); } by[y].push(q); });
+    years = years.sort();
+    years.forEach(function(y){ by[y] = shuffle(by[y]); });
+    var out = [];
+    while (out.length < n){
+      var added = false;
+      for (var i=0;i<years.length;i++){
+        var y = years[i];
+        if (by[y] && by[y].length){ out.push(by[y].shift()); added = true; if (out.length >= n) break; }
+      }
+      if (!added) break;
+    }
+    return out;
+  }
+
+  function pickSession(mock){
+    var all = items(), t = today();
+    if (mock){
+      var practiced = all.filter(function(q){ return D.prog[q.id]; });
+      return { qs: balance(practiced, 10), mock:true };
+    }
+    var dueQ = [], fresh = [], later = [];
+    all.forEach(function(q){
+      var p = D.prog[q.id];
+      if (!p) fresh.push(q);
+      else if (p.lv >= GRAD) { /* 毕业不再出现 */ }
+      else if (p.due && p.due <= t) dueQ.push(q);
+      else later.push(q);
+    });
+    var a = balance(dueQ, 10);
+    if (a.length < 10) a = a.concat(balance(fresh, 10 - a.length));
+    if (a.length < 10) a = a.concat(balance(later, 10 - a.length));
+    return { qs: a, mock:false };
+  }
+
+  /* ---------- 会话状态 ---------- */
+  var S = { mode:'idle', mock:false, qs:[], cur:0, ans:{}, judged:{}, result:null };
+  var STATE = 'study';   // study | exam
+
+  function startSession(mock){
+    var p = pickSession(mock);
+    if (!p.qs.length){
+      alert(mock ? '还没有练过的题，先做一组练习再来模拟考。' : '题库是空的：先「导入题库」或等题库灌进来。');
+      return;
+    }
+    S = { mode:'run', mock:!!mock, qs:p.qs, cur:0, ans:{}, judged:{}, result:null };
+    if (mock) setState('exam');
+    render();
+  }
+
+  function setState(s){
+    STATE = s;
+    Array.prototype.forEach.call($('tgState').querySelectorAll('button'), function(b){
+      b.className = (b.dataset.s === s) ? 'on' : '';
+    });
+  }
+  $('tgState').onclick = function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    if (S.mode === 'run' && S.mock) return;            // 模拟考固定考试状态
+    setState(b.dataset.s === 'exam' ? 'exam' : 'study');
+    render();
+  };
+
+  /* ---------- 判题 ---------- */
+  function normAns(a){ return String(a||'').toUpperCase().replace(/[^A-D]/g,'').split('').sort().join(''); }
+  function sameSet(chosen, correct){ return normAns(chosen) === normAns(correct); }
+
+  function applyResult(q, ok){
+    var p = progOf(q.id);
+    var from = p.lv, lv = p.lv;
+    if (ok){
+      lv = from + 1;
+      if (from >= 4) lv = GRAD;                        // 15 天档答对 → 毕业
+      if (lv > GRAD) lv = GRAD;
+      p.due = (lv >= GRAD) ? '' : addDays(today(), LV[lv]);
+    } else {
+      lv = 0;
+      p.due = addDays(today(), LV[0]);
+    }
+    p.lv = lv; p.last = today();
+    p.hist.push({ d: today(), ok: ok ? 1 : 0, from: from, to: lv });
+    save(); stats();
+  }
+
+  function judgeNow(q, ok, mock){
+    if (mock){                                        // 模拟考不升降档
+      var p = progOf(q.id); p.last = today();
+      p.hist.push({ d: today(), ok: ok ? 1 : 0, from: p.lv, to: p.lv, mock: 1 });
+      save();
+      return;
+    }
+    applyResult(q, ok);
+  }
+
+  /* ---------- 渲染 ---------- */
+  function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function lvName(lv){ return lv >= GRAD ? '毕业' : (LV[lv] + ' 天档'); }
+
+  function render(){
+    stats();
+    var st = $('stage');
+    if (S.mode === 'idle'){ return; }
+    if (S.result){ st.innerHTML = renderResult(); bindResult(); return; }
+    st.innerHTML = renderQuestion();
+    bindQuestion();
+  }
+
+  function renderQuestion(){
+    var q = S.qs[S.cur], p = D.prog[q.id], judged = S.judged[q.id];
+    var typeName = { single:'单选题', multi:'多选题', judge:'判断题', essay:'问答题' }[q.type] || '题目';
+    var opts = (q.opts || []).map(function(o){
+      var L = o[0], T = o.slice(1);
+      var cls = 'opt';
+      if (S.ans[q.id] && S.ans[q.id].indexOf(L) >= 0) cls += ' sel';
+      if (judged && q.ans){
+        if (q.ans.indexOf(L) >= 0) cls = 'opt ok';
+        else if (S.ans[q.id] && S.ans[q.id].indexOf(L) >= 0) cls = 'opt bad';
+      }
+      return '<button class="' + cls + '" data-l="' + L + '"' + (judged ? ' disabled' : '') + '>' + esc(o) + '</button>';
+    }).join('');
+
+    var res = '';
+    if (judged){
+      if (judged.ok === null) res = '<div class="res nd">这一题缺标准答案，请自评：' +
+        '<button class="btn" data-self="1">算对</button> <button class="btn" data-self="0">算错</button></div>';
+      else res = '<div class="res ' + (judged.ok ? 'ok' : 'bad') + '">' + (judged.ok ? '✅ 答对' : '❌ 答错') +
+        '　正确答案：' + (q.ans || '（缺）') + '</div>';
+    } else if (STATE === 'study' && !q.ans){
+      res = '<div class="res nd">这题没有存标准答案，答完请自评。</div>';
+    }
+
+    var extra = '';
+    if (STATE === 'study'){
+      extra = '<div class="res ' + (0?'':'') + '" style="background:#f7f9fd;color:#5b6d86">' +
+        (q.ans ? ('标准答案：<b>' + esc(q.ans) + '</b>') : '标准答案：<b>未收录</b>') +
+        (q.exp ? ('<div style="margin-top:6px">解析：' + esc(q.exp) + '</div>') : '') + '</div>'
+        + '<div style="font-size:11.5px;color:#93a1b4;margin:10px 0 4px">备忘录（跟着这题走，随便写）</div>'
+        + '<textarea class="note" id="noteBox">' + esc(D.notes[q.id] || '') + '</textarea>'
+        + (p ? ('<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '　已毕业') +
+            (p.hist && p.hist.length ? ('<ul class="hist">' + p.hist.slice(-5).map(function(h){
+              return '<li>' + h.d + ' ' + (h.ok ? '对' : '错') + '　' + lvName(h.from) + ' → ' + lvName(h.to) + (h.mock ? '（模拟）' : '') + '</li>';
+            }).join('') + '</ul>') : '') + '</div>') : '');
+    } else {
+      extra = '<div class="meta">考试状态：只显示题干和选项，交卷才判。</div>';
+    }
+
+    return '<div class="q">'
+      + '<span class="tag">' + typeName + ' · 第 ' + (S.cur + 1) + '/' + S.qs.length + ' 题'
+      + (S.mock ? ' · 模拟考' : '') + (q.paper ? (' · ' + esc(q.paper)) : '') + '</span>'
+      + '<div class="stem">' + esc(q.q) + '</div>'
+      + opts
+      + res + extra
+      + '<div class="nav">'
+      + '<button class="btn" id="btnPrev"' + (S.cur === 0 ? ' disabled' : '') + '>← 上一题</button>'
+      + (S.cur === S.qs.length - 1
+          ? (STATE === 'exam' ? '<button class="btn pri" id="btnSubmit">交卷</button>' : '<button class="btn pri" id="btnEnd">结束本组</button>')
+          : '<button class="btn" id="btnNext">下一题 →</button>')
+      + '</div></div>';
+  }
+
+  function bindQuestion(){
+    var q = S.qs[S.cur];
+    var box = $('stage');
+    Array.prototype.forEach.call(box.querySelectorAll('.opt'), function(b){
+      b.onclick = function(){
+        if (S.judged[q.id]) return;
+        var L = b.dataset.l;
+        if (q.type === 'multi'){
+          var cur = S.ans[q.id] || '';
+          S.ans[q.id] = (cur.indexOf(L) >= 0) ? cur.replace(L,'') : (cur + L).split('').sort().join('');
+          render(); return;
+        }
+        S.ans[q.id] = L;
+        if (STATE === 'exam'){ render(); return; }
+        doJudge(q);
+      };
+    });
+    var nb = $('noteBox');
+    if (nb) nb.onblur = function(){ D.notes[q.id] = nb.value; save(); };
+    var bSelf = box.querySelector('[data-self]');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-self]'), function(b){
+      b.onclick = function(){ selfJudge(q, b.dataset.self === '1'); };
+    });
+    var bPrev = $('btnPrev'), bNext = $('btnNext'), bSubmit = $('btnSubmit'), bEnd = $('btnEnd');
+    if (bPrev) bPrev.onclick = function(){ S.cur--; render(); };
+    if (bNext) bNext.onclick = function(){
+      if (STATE === 'study' && !S.judged[q.id] && S.ans[q.id]) doJudge(q);
+      S.cur++; render();
+    };
+    if (bSubmit) bSubmit.onclick = submit;
+    if (bEnd) bEnd.onclick = submit;
+  }
+
+  function doJudge(q){
+    var chosen = S.ans[q.id] || '';
+    if (!chosen) return;
+    var ok = q.ans ? sameSet(chosen, q.ans) : null;
+    S.judged[q.id] = { ok: ok };
+    if (ok !== null) judgeNow(q, ok, S.mock);
+    render();
+  }
+  function selfJudge(q, ok){
+    if (!S.judged[q.id]) S.judged[q.id] = { ok: null };
+    S.judged[q.id].ok = ok;
+    judgeNow(q, ok, S.mock);
+    render();
+  }
+
+  /* ---------- 交卷 ---------- */
+  function submit(){
+    var answered = 0, right = 0, unknown = 0, wrong = [];
+    S.qs.forEach(function(q){
+      var j = S.judged[q.id];
+      if (!j){
+        if (S.ans[q.id]){                     // 考试状态里选了但没判的
+          var ok = q.ans ? sameSet(S.ans[q.id], q.ans) : null;
+          j = { ok: ok }; S.judged[q.id] = j;
+          if (ok !== null) judgeNow(q, ok, S.mock);
+        }
+      }
+      if (!j) return;
+      if (j.ok === null){ unknown++; return; }
+      answered++;
+      if (j.ok) right++; else wrong.push(q.id);
+    });
+    S.result = { total:S.qs.length, answered:answered, right:right, wrong:wrong, unknown:unknown };
+    render();
+  }
+
+  function renderResult(){
+    var r = S.result;
+    var wrongList = r.wrong.map(function(id){
+      var q = byId(id), p = D.prog[id];
+      return '<div class="q"><span class="tag">' + esc(q.paper || '') + '</span><div class="stem">' + esc(q.q) + '</div>' +
+        '<div class="res bad">正确答案：' + esc(q.ans || '（缺）') + '</div>' +
+        (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '') + '</div>' : '') + '</div>';
+    }).join('');
+    return '<div class="q"><div class="stem" style="font-size:16px"><b>本组结束</b></div>'
+      + '<div class="meta">共 ' + r.total + ' 题 · 已判 ' + r.answered + ' 题 · 答对 ' + r.right
+      + (r.unknown ? ('　缺答案待自评 ' + r.unknown + ' 题') : '') + '</div></div>'
+      + (r.wrong.length ? ('<div style="font-size:12px;color:#93a1b4;margin:16px 0 4px">错题（已回 1 天档，明天到期）</div>' + wrongList) : '')
+      + '<div class="nav" style="margin-top:16px"><button class="btn pri" id="btnAgain">再来一组</button>'
+      + '<button class="btn" id="btnIdle">回到首页</button></div>';
+  }
+  function bindResult(){
+    $('btnAgain').onclick = function(){ var mock = S.mock; S = {mode:'idle',qs:[],cur:0,ans:{},judged:{}}; startSession(mock); };
+    $('btnIdle').onclick = function(){ S = { mode:'idle', qs:[], cur:0, ans:{}, judged:{} }; $('stage').innerHTML = '<div class="empty">点「开始一组」开练。</div>'; };
+  }
+
+  /* ---------- 导入题库 ---------- */
+  function mergeBank(arr){
+    var n = 0;
+    arr.forEach(function(q){
+      if (!q || !q.id || !q.q) return;
+      if (!q.opts) q.opts = [];
+      D.bank.push(q); n++;
+    });
+    save(); stats();
+    alert('导入 ' + n + ' 题，题库现共 ' + items().length + ' 题。');
+  }
+  $('btnImport').onclick = function(){ $('fileBank').click(); };
+  $('fileBank').onchange = function(){
+    var f = this.files && this.files[0]; if (!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){
+      try {
+        var j = JSON.parse(String(fr.result));
+        var arr = Array.isArray(j) ? j : (j.items || j.questions || []);
+        if (!arr.length) throw new Error('没找到题目数组');
+        mergeBank(arr);
+      } catch(e){ alert('导入失败：' + e.message); }
+      $('fileBank').value = '';
+    };
+    fr.readAsText(f, 'utf-8');
+  };
+
+  /* ---------- 启动 ---------- */
+  $('btnStart').onclick = function(){ startSession(false); };
+  $('btnMock').onclick = function(){ startSession(true); };
+
+  setState('study');
+  stats();
+
+  fetch('exam/bank.json?r=' + Date.now())
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){ if (j) { FILE_BANK.items = (j.items || j.questions || []); stats(); } })
+    .catch(function(){});
+})();
+</script>
+</body>
+</html>
