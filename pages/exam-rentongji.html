@@ -34,6 +34,12 @@
 .res.ok{background:#eaf7f0;color:#0b7a4b}
 .res.bad{background:#fdeceb;color:#c0392b}
 .res.nd{background:#fff7e6;color:#8a5b00}
+.bar .b.click{cursor:pointer;border-color:#cfe0f7}
+.bar .b.click:active{background:#e8f1fe}
+.dv{display:inline-block;font-size:11px;border-radius:6px;padding:2px 7px;margin-left:6px;background:#eef4ff;color:#1a6ee0}
+.dv.g{background:#eaf7f0;color:#178a53}
+.note2{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;line-height:1.5;padding:8px 9px;border:1px solid #e0e7f2;border-radius:8px;background:#fbfcfe;color:#2b3f5c;min-height:44px;resize:vertical;margin-top:6px}
+.svd{font-size:11px;color:#178a53;margin-left:6px}
 .note{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;padding:9px 10px;border:1px solid #e0e7f2;border-radius:9px;background:#fbfcfe;color:#2b3f5c;min-height:70px;resize:vertical}
 .meta{font-size:11.5px;color:#93a1b4;line-height:1.6;margin-top:8px}
 .wbad,.wok{display:inline-block;font-size:11px;border-radius:6px;padding:2px 6px;margin-left:6px}
@@ -73,7 +79,7 @@
 
   <div class="bar">
     <div class="b"><div class="k">题库</div><div class="v" id="sBank">—</div></div>
-    <div class="b"><div class="k">练过</div><div class="v" id="sDone">0</div></div>
+    <div class="b click" id="bDone" role="button" tabindex="0" title="点开看练过的全部题目"><div class="k">练过 ›</div><div class="v" id="sDone">0</div></div>
     <div class="b"><div class="k">今日到期</div><div class="v" id="sDue">0</div></div>
     <div class="b"><div class="k">毕业</div><div class="v" id="sGrad">0</div></div>
   </div>
@@ -284,6 +290,7 @@
     var st = $('stage');
     if (S.mode === 'kp'){ st.innerHTML = renderKp(); bindKp(); return; }
     if (S.mode === 'wrong'){ st.innerHTML = renderWrong(); bindKp(); return; }
+    if (S.mode === 'done'){ st.innerHTML = renderDone(); bindKp(); bindNotes(); return; }
     if (S.mode === 'idle'){ return; }
     if (S.result){ st.innerHTML = renderResult(); bindResult(); return; }
     st.innerHTML = renderQuestion();
@@ -424,6 +431,65 @@
     });
   }
 
+
+
+  /* ---------- 练过：全部练过的题的存档 ---------- */
+  function renderDone(){
+    var all = items(), list = all.filter(function(q){ return D.prog[q.id]; });
+    if (!list.length) return '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>练过</b></div>'
+      + '<div class="meta">还没有练过的题。做过一题就会出现在这里。</div></div>';
+    var rightN = 0, wrongN = 0, gradN = 0, lvA = [0,0,0,0,0];
+    list.forEach(function(q){
+      var p = D.prog[q.id], w = 0, c = 0;
+      (p.hist || []).forEach(function(h){ if (h.ok === 1) c++; else if (h.ok === 0) w++; });
+      if (c) rightN++;
+      if (w) wrongN++;
+      if ((p.lv || 0) >= GRAD) gradN++;
+      lvA[Math.min(p.lv || 0, GRAD)]++;
+    });
+    list.sort(function(a,b){
+      var pa = D.prog[a.id], pb = D.prog[b.id];
+      return String(pb.last || '').localeCompare(String(pa.last || ''));
+    });
+    var html = '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>练过 · 全部存档</b>'
+      + '<span class="dv">' + list.length + ' 题</span></div>'
+      + '<div class="meta">对过 ' + rightN + ' · 错过 ' + wrongN + ' · 毕业 ' + gradN + '　｜　'
+      + '现在档位：1 天 ' + lvA[0] + ' · 3 天 ' + lvA[1] + ' · 7 天 ' + lvA[2] + ' · 15 天 ' + lvA[3] + ' · 毕业 ' + lvA[4]
+      + '<br>按最近一次作答排前面。点标题展开看全部对错日期' + (STATE === 'study' ? '，备注直接写、自动保存。' : '。（考试状态不显示备注框）') + '</div></div>';
+    list.forEach(function(q, idx){
+      var p = D.prog[q.id];
+      var tn = { single:'单选', multi:'多选', judge:'判断', essay:'问答' }[q.type] || '';
+      var grad = (p.lv || 0) >= GRAD;
+      var head = '<b>' + (q.paper || '') + ' · ' + tn + '第' + q.id.split('_').pop() + '题</b>'
+        + '<span class="dv' + (grad ? ' g' : '') + '">' + lvName(p.lv || 0) + '</span>'
+        + '<span class="cnt">' + (grad ? '已毕业' : (p.due ? '下次 ' + p.due : '')) + '</span>';
+      var hist = (p.hist || []);
+      var body = '<div class="wq">' + esc((q.q || '').slice(0, 64)) + (q.q && q.q.length > 64 ? '…' : '') + '</div>'
+        + '<div class="wline"><span class="wt bad">全部记录</span>' + hist.map(function(h){
+            return '<span class="wd">' + esc(String(h.d)) + (h.ok === 1 ? ' ✓' : (h.ok === 0 ? ' ✗' : ' ?'))
+              + (h.mock ? '（模拟）' : '') + '</span>';
+          }).join('') + (hist.length ? '' : '<span class="wd">还没有记录</span>') + '</div>';
+      if (STATE === 'study'){
+        body += '<div style="font-size:11.5px;color:#93a1b4;margin-top:8px">备注<span class="svd" id="svd_' + q.id + '"></span></div>'
+          + '<textarea class="note2" data-q="' + q.id + '" placeholder="随便写，输入即保存">' + esc(D.notes[q.id] || '') + '</textarea>';
+      }
+      html += '<div class="kp" data-d="' + idx + '"><div class="hd2">' + head + '</div><div class="body2">' + body + '</div></div>';
+    });
+    return html;
+  }
+  function bindNotes(){
+    Array.prototype.forEach.call($('stage').querySelectorAll('.note2'), function(el){
+      var id = el.getAttribute('data-q');
+      var timer = null;
+      el.oninput = function(){
+        D.notes[id] = el.value;
+        clearTimeout(el._t);
+        el._t = setTimeout(function(){ save(); }, 300);
+        var tip = document.getElementById('svd_' + id);
+        if (tip){ tip.textContent = '已保存'; setTimeout(function(){ if (tip) tip.textContent = ''; }, 1200); }
+      };
+    });
+  }
 
   /* ---------- 错题集 ---------- */
   function collectWrong(){
@@ -591,6 +657,10 @@
   };
   $('btnWrong').onclick = function(){
     S = { mode:'wrong', qs:[], cur:0, ans:{}, judged:{} };
+    render();
+  };
+  $('bDone').onclick = function(){
+    S = { mode:'done', qs:[], cur:0, ans:{}, judged:{} };
     render();
   };
   var fileRec = document.createElement('input');
