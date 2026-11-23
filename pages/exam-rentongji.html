@@ -36,6 +36,15 @@
 .res.nd{background:#fff7e6;color:#8a5b00}
 .note{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;padding:9px 10px;border:1px solid #e0e7f2;border-radius:9px;background:#fbfcfe;color:#2b3f5c;min-height:70px;resize:vertical}
 .meta{font-size:11.5px;color:#93a1b4;line-height:1.6;margin-top:8px}
+.wbad,.wok{display:inline-block;font-size:11px;border-radius:6px;padding:2px 6px;margin-left:6px}
+.wbad{color:#c23c3c;background:#fdeeee}
+.wok{color:#178a53;background:#eaf7f0}
+.wq{font-size:12px;color:#6b7c93;margin:6px 0 4px;line-height:1.55}
+.wline{font-size:11.5px;margin:2px 0}
+.wt{display:inline-block;width:16px;color:#93a1b4}
+.wt.bad{color:#c23c3c}
+.wt.ok{color:#178a53}
+.wd{display:inline-block;background:#f4f7fc;border-radius:5px;padding:1px 6px;margin:2px 4px 2px 0;color:#5c6f88}
 .hist{margin:6px 0 0;padding-left:16px;font-size:11.5px;color:#7c8ca3;line-height:1.6}
 .nav{display:flex;gap:8px;justify-content:space-between;margin-top:12px}
 .pill2{font-size:11px;color:#5b6d86;background:#f1f5fb;border-radius:20px;padding:3px 10px}
@@ -80,6 +89,7 @@
     <button class="btn" id="btnExport">导出记录</button>
     <button class="btn" id="btnImportRec">导入记录</button>
     <button class="btn" id="btnKp">知识点浓度</button>
+    <button class="btn" id="btnWrong">错题集</button>
   </div>
 
   <div id="stage"><div class="empty">点「开始一组」开练。每组现抽 12 题、每份卷各出 1 题，组不存档；档位与笔记跟着每一题走。</div></div>
@@ -101,8 +111,8 @@
     var d = new Date(dayStr + 'T00:00:00'); d.setDate(d.getDate() + n);
     return d.getFullYear() + '-' + PAD(d.getMonth()+1) + '-' + PAD(d.getDate());
   }
-  var LV = [1,3,7,15];           // 档位间隔（天）；lv=4 即 15 天档，答对毕业（lv=5）
-  var GRAD = 5;
+  var LV = [1,3,7,15];           // 档位间隔（天）；lv 0=1天 1=3天 2=7天 3=15天，从 15 天档答对即毕业（lv=4）
+  var GRAD = 4;
 
   /* ---------- 数据 ---------- */
   var D = HUB.get('exam', null) || {};
@@ -138,6 +148,19 @@
     $('sDone').textContent = practiced;
     $('sDue').textContent = due;
     $('sGrad').textContent = grad;
+  }
+
+
+  /* ---------- 旧数据迁移：修正历史里被算坏的档位 ---------- */
+  function migrate(){
+    var changed = false;
+    Object.keys(D.prog || {}).forEach(function(id){
+      var p = D.prog[id]; if (!p) return;
+      if (p.lv > 4){ p.lv = 4; changed = true; }
+      if (p.lv >= 4 && p.due !== ''){ p.lv = 4; p.due = ''; changed = true; }
+      if (p.lv < 4 && (!p.due || String(p.due).indexOf('NaN') >= 0)){ p.due = today(); changed = true; }
+    });
+    if (changed) save();
   }
 
   /* ---------- 抽题：按卷摊平，每份卷各出 1 题 ---------- */
@@ -230,7 +253,7 @@
     var from = p.lv, lv = p.lv;
     if (ok){
       lv = from + 1;
-      if (from >= 4) lv = GRAD;                        // 15 天档答对 → 毕业
+      if (from >= 3) lv = GRAD;                        // 15 天档（lv=3）答对 → 毕业
       if (lv > GRAD) lv = GRAD;
       p.due = (lv >= GRAD) ? '' : addDays(today(), LV[lv]);
     } else {
@@ -260,6 +283,7 @@
     stats();
     var st = $('stage');
     if (S.mode === 'kp'){ st.innerHTML = renderKp(); bindKp(); return; }
+    if (S.mode === 'wrong'){ st.innerHTML = renderWrong(); bindKp(); return; }
     if (S.mode === 'idle'){ return; }
     if (S.result){ st.innerHTML = renderResult(); bindResult(); return; }
     st.innerHTML = renderQuestion();
@@ -400,6 +424,53 @@
     });
   }
 
+
+  /* ---------- 错题集 ---------- */
+  function collectWrong(){
+    var out = [];
+    items().forEach(function(q){
+      var p = D.prog[q.id];
+      if (!p || !p.hist || !p.hist.length) return;
+      var wrong = [], right = [];
+      p.hist.forEach(function(h){
+        if (h.ok === 1) right.push(h.d);
+        else if (h.ok === 0) wrong.push(h.d + (h.mock ? '（模拟考）' : ''));
+      });
+      if (wrong.length) out.push({ q:q, p:p, wrong:wrong, right:right });
+    });
+    out.sort(function(a,b){
+      return b.wrong.length - a.wrong.length || String(b.wrong[b.wrong.length-1]).localeCompare(String(a.wrong[a.wrong.length-1]));
+    });
+    return out;
+  }
+  function renderWrong(){
+    var list = collectWrong();
+    if (!list.length) return '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>错题集</b></div>'
+      + '<div class="meta">还没有做错过的题。答错的题会自动进入这里，同时回 1 天档重新爬。</div></div>';
+    var c1 = 0, c2 = 0, c3 = 0, lvA = [0,0,0,0,0,0];
+    list.forEach(function(r){
+      var n = r.wrong.length;
+      if (n === 1) c1++; else if (n === 2) c2++; else c3++;
+      var lv = Math.min(r.p.lv || 0, 5); lvA[lv]++;
+    });
+    var html = '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>错题集</b></div>'
+      + '<div class="meta">错过的题共 <b>' + list.length + '</b> 题：错 1 次 ' + c1 + ' · 错 2 次 ' + c2 + ' · 错 3 次以上 ' + c3 + '。'
+      + '当前档位：1 天 ' + lvA[0] + ' · 3 天 ' + lvA[1] + ' · 7 天 ' + lvA[2] + ' · 15 天 ' + lvA[3] + ' · 毕业 ' + lvA[4] + '。按错得最多的排前面。</div></div>';
+    list.forEach(function(r, idx){
+      var q = r.q, p = r.p;
+      var tn = { single:'单选', multi:'多选', judge:'判断', essay:'问答' }[q.type] || '';
+      var head = '<b>' + (q.paper || '') + ' · ' + tn + '第' + q.id.split('_').pop() + '题</b>'
+        + '<span class="wbad">错 ' + r.wrong.length + '</span>'
+        + '<span class="wok">对 ' + r.right.length + '</span>'
+        + '<span class="cnt">当前：' + lvName(p.lv) + (p.due ? '（下次 ' + p.due + '）' : '') + '</span>';
+      var body = '<div class="wq">' + esc((q.q || '').slice(0, 64)) + (q.q && q.q.length > 64 ? '…' : '') + '</div>'
+        + '<div class="wline"><span class="wt bad">错</span>' + r.wrong.map(function(d){ return '<span class="wd">' + esc(d) + '</span>'; }).join('') + '</div>'
+        + (r.right.length ? '<div class="wline"><span class="wt ok">对</span>' + r.right.map(function(d){ return '<span class="wd">' + esc(d) + '</span>'; }).join('') + '</div>' : '');
+      html += '<div class="kp" data-w="' + idx + '"><div class="hd2">' + head + '</div><div class="body2">' + body + '</div></div>';
+    });
+    return html;
+  }
+
   /* ---------- 导出 / 导入记录 ---------- */
   function exportAll(){
     var out = { app:'console-hub/exam', kind:'认通基刷题记录', exportedAt:HUB.nowStamp(), total:items().length, records:[] };
@@ -518,6 +589,10 @@
     S = { mode:'kp', qs:[], cur:0, ans:{}, judged:{} };
     render();
   };
+  $('btnWrong').onclick = function(){
+    S = { mode:'wrong', qs:[], cur:0, ans:{}, judged:{} };
+    render();
+  };
   var fileRec = document.createElement('input');
   fileRec.type = 'file'; fileRec.accept = '.json,application/json'; fileRec.style.display = 'none';
   document.body.appendChild(fileRec);
@@ -536,6 +611,7 @@
   $('btnStart').onclick = function(){ startSession(false); };
   $('btnMock').onclick = function(){ startSession(true); };
 
+  migrate();
   setState('study');
   stats();
 
