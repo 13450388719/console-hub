@@ -47,6 +47,9 @@
 .oo{font-size:12.5px;color:#40536e;line-height:1.55;margin:3px 0 0 2px}
 .ansline{font-size:12px;color:#0b7a4b;background:#eaf7f0;border-radius:7px;padding:5px 8px;margin:7px 0 3px}
 .expl{font-size:11.5px;color:#6b7c93;line-height:1.55;margin:3px 0 4px}
+.ro{font-size:13px;line-height:1.55;padding:7px 10px;margin:5px 0;border:1px solid #e0e7f2;border-radius:8px;background:#fbfcfe;color:#40536e}
+.ro.ok{border-color:#0b7a4b;background:#eaf7f0;color:#0b7a4b;font-weight:600}
+.ro.mine{border-color:#c0392b;background:#fdeceb;color:#c0392b}
 .note2{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;line-height:1.5;padding:8px 9px;border:1px solid #e0e7f2;border-radius:8px;background:#fbfcfe;color:#2b3f5c;min-height:44px;resize:vertical;margin-top:6px}
 .svd{font-size:11px;color:#178a53;margin-left:6px}
 .note{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.5;padding:9px 10px;border:1px solid #e0e7f2;border-radius:9px;background:#fbfcfe;color:#2b3f5c;min-height:70px;resize:vertical}
@@ -589,8 +592,17 @@
     var r = S.result;
     var wrongList = r.wrong.map(function(id){
       var q = byId(id), p = D.prog[id];
+      var myAns = S.ans[id] || '';
+      var opts = (q.opts || []).map(function(o){
+        var L = (o.match(/^([A-D])/) || [])[1] || '';
+        var isOk = q.ans && q.ans.indexOf(L) >= 0;
+        var isMine = L && myAns.indexOf(L) >= 0;
+        return '<div class="ro' + (isOk ? ' ok' : '') + (isMine ? ' mine' : '') + '">' + esc(o)
+          + (isOk ? ' ✓' : '') + (isMine && !isOk ? ' ← 你选的' : '') + '</div>';
+      }).join('');
       return '<div class="q"><span class="tag">' + esc(q.paper || '') + '</span><div class="stem">' + esc(q.q) + '</div>' +
-        '<div class="res bad">正确答案：' + esc(q.ans || '（缺）') + '</div>' +
+        opts +
+        '<div class="res bad">正确答案：' + esc(q.ans || '（缺）') + (myAns ? ('　你选：' + esc(myAns)) : '') + '</div>' +
         (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '') + '</div>' : '') + '</div>';
     }).join('');
     return '<div class="q"><div class="stem" style="font-size:16px"><b>本组结束</b></div>'
