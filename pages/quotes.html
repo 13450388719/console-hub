@@ -190,49 +190,59 @@
     };
   }
 
-  /* 🎲 随手一句：先按标签等概率抽组，再在组内不重复抽句子（抽完一轮才重置） */
-  var rndBag = {}, lastTag = null, lastId = null;
+  /* 🎲 随手一句：全库一个大洗牌袋，抽完一轮才重置；同一句、同一标签都不会连出 */
+  var gBag = null, gBagSig = '', lastTag = null, lastText = null;
   function rndInt(n){
     if (n <= 0) return 0;
     try { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
     catch(e){ return Math.floor(Math.random()*n); }
   }
-  function bagFor(key, g){
-    var bag = rndBag[key];
-    if (!bag || !bag.length){
-      bag = g.map(function(it){ return it.id; });
-      for (var i=bag.length-1;i>0;i--){ var j=rndInt(i+1); var tmp=bag[i]; bag[i]=bag[j]; bag[j]=tmp; }
-      rndBag[key] = bag;
-    }
-    return bag;
+  function listSig(list){
+    var n = list.length, c = 0;
+    for (var i=0;i<n;i++) c += (list[i].id || '').length + (list[i].text || '').length;
+    return n + '|' + (list[0] && list[0].id) + '|' + (list[n-1] && list[n-1].id) + '|' + c;
+  }
+  function buildBag(list){
+    // 同一句话只留一条（防止重复录入导致反复出现）
+    var seen = {}, uniq = [];
+    list.forEach(function(it){
+      var t = (it.text || '').trim();
+      if (t && seen[t]) return;
+      if (t) seen[t] = 1;
+      uniq.push(it.id);
+    });
+    for (var i=uniq.length-1;i>0;i--){ var j=rndInt(i+1); var t2=uniq[i]; uniq[i]=uniq[j]; uniq[j]=t2; }
+    return uniq;
   }
   function pickOne(){
     var list = (items().items) || [];
     if (!list.length) return null;
-    var groups = {};
-    list.forEach(function(it){ var k = it.tag || '未分类'; (groups[k] = groups[k] || []).push(it); });
-    var keys = Object.keys(groups);
+    var byId = {};
+    list.forEach(function(it){ byId[it.id] = it; });
 
-    // 1) 标签随机，但不和上一句的标签相同（只剩一个标签时才允许重复）
-    var pool = (keys.length > 1 && lastTag)
-      ? keys.filter(function(k){ return k !== lastTag; })
-      : keys;
-    if (!pool.length) pool = keys;
-    var key = pool[rndInt(pool.length)];
-    var g = groups[key];
+    var sig = listSig(list);
+    if (!gBag || !gBag.length || gBagSig !== sig){ gBag = buildBag(list); gBagSig = sig; }
 
-    // 2) 组内按洗牌袋抽取，一轮内不重复；遇到和上一句完全同一条就换下一条
-    var bag = bagFor(key, g);
-    var id = bag.pop();
-    if (id === lastId && bag.length){ var skip = id; id = bag.pop(); bag.push(skip); }
+    var idx = -1;
+    for (var i=gBag.length-1;i>=0;i--){
+      var it = byId[gBag[i]];
+      if (!it) continue;
+      var tag = it.tag || '未分类';
+      var bad = (lastTag && tag === lastTag) || (lastText && (it.text || '') === lastText);
+      if (bad && gBag.length > 1) continue;
+      idx = i; break;
+    }
+    if (idx < 0) idx = gBag.length - 1;
 
-    var q = null;
-    for (var k2=0;k2<g.length;k2++){ if (g[k2].id === id){ q = g[k2]; break; } }
-    if (!q) q = g[rndInt(g.length)];
-    lastTag = key; lastId = q.id;
-    q.__tag = key;
+    var id = gBag.splice(idx, 1)[0];
+    var q = byId[id];
+    if (!q){ gBag = null; return pickOne(); }
+    lastTag = q.tag || '未分类';
+    lastText = q.text || '';
+    q.__tag = lastTag;
     return q;
   }
+
   $('btnRandom').onclick = function(){
     var q = pickOne();
     if (!q){ HUB.toast('库里还没有句子'); return; }
