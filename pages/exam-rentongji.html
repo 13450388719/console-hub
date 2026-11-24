@@ -100,8 +100,8 @@
     <button class="btn pri" id="btnStart">开始一组（12 题）</button>
     <button class="btn" id="btnMock">模拟考（只抽练过的）</button>
     <div class="tg" id="tgState">
-      <button data-s="study" class="on">学习状态</button>
-      <button data-s="exam">考试状态</button>
+      <button data-s="study">学习状态</button>
+      <button data-s="exam" class="on">考试状态</button>
     </div>
     <button class="btn" id="btnImport">导入题库</button>
     <button class="btn" id="btnExport">导出记录</button>
@@ -235,7 +235,7 @@
 
   /* ---------- 会话状态 ---------- */
   var S = { mode:'idle', mock:false, qs:[], cur:0, ans:{}, judged:{}, result:null };
-  var STATE = 'study';   // study | exam
+  var STATE = 'exam';   // study | exam（默认考试态）
 
   function startSession(mock){
     var p = pickSession(mock);
@@ -673,7 +673,7 @@
   $('btnMock').onclick = function(){ startSession(true); };
 
   migrate();
-  setState('study');
+  setState('exam');
   stats();
 
   fetch('exam/bank.json?r=' + Date.now())
