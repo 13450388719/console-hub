@@ -8,7 +8,7 @@ window.HUB = (function () {
   'use strict';
 
   var KEYS = ['quotes','memos','cards','insts','repay_records','funds','visits',
-              'shopping','news','news_saved','news_cols','news_crowd','auto_memo_ids','offers','exam'];
+              'shopping','news','news_saved','news_cols','news_crowd','auto_memo_ids','offers','exam','foods'];
 
   var NAME = {
     cards:'信用卡', memos:'备忘提醒', insts:'分期记录', repay_records:'还款记录',
