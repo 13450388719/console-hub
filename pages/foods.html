@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>美食 · 中控台</title>
 <link rel="stylesheet" href="../shared/hub.css?v=20261116h">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 .wrap{max-width:1000px;margin:0 auto;padding:60px 14px 60px}
 .hd{display:flex;justify-content:space-between;align-items:flex-start;margin:0 0 12px}
@@ -89,6 +88,7 @@
       <button class="btn" id="btnLoc">📍 以我为中心</button>
       <button class="btn ghost" id="btnFit">⤢ 看全部</button>
       <span class="mini" id="locTip"></span>
+      <span class="mini" id="geoStat" style="margin-left:auto"></span>
     </div>
     <div id="map"></div>
     <div class="nearbox" id="nearbox"></div>
@@ -96,7 +96,50 @@
 </div>
 <script src="../data/seed.js?v=20261116h"></script>
 <script src="../shared/hub.js?v=20261124a"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* Leaflet 多源加载：一个源挂了自动换下一个 */
+window.__loadLeaflet = (function(){
+  var CDN = [
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+    'https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js',
+    'https://cdn.staticfile.org/leaflet/1.9.4/leaflet.js'
+  ];
+  var CSS = [
+    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+    'https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css',
+    'https://cdn.staticfile.org/leaflet/1.9.4/leaflet.css'
+  ];
+  var done = false, started = false, waiting = [];
+  function css(i){
+    if (i >= CSS.length || document.querySelector('link[data-lf]')) return;
+    var l = document.createElement('link'); l.rel='stylesheet'; l.href=CSS[i]; l.setAttribute('data-lf','1');
+    l.onerror = function(){ l.remove(); css(i+1); };
+    document.head.appendChild(l);
+  }
+  function finish(ok){
+    done = true;
+    waiting.forEach(function(cb){ cb(ok); });
+    waiting = [];
+  }
+  function tryLoad(i){
+    if (window.L) { css(0); finish(true); return; }
+    if (i >= CDN.length) { finish(false); return; }
+    var s = document.createElement('script');
+    s.src = CDN[i]; s.async = true;
+    var settled = false;
+    var t = setTimeout(function(){ if (!settled){ settled = true; s.remove(); tryLoad(i+1); } }, 9000);
+    s.onload = function(){ if (!settled){ settled=true; clearTimeout(t); css(0); finish(!!window.L); } };
+    s.onerror = function(){ if (!settled){ settled=true; clearTimeout(t); tryLoad(i+1); } };
+    document.head.appendChild(s);
+  }
+  return function(cb){
+    if (window.L) { if (cb) cb(true); return; }
+    if (done) { if (cb) cb(!!window.L); return; }
+    if (cb) waiting.push(cb);
+    if (!started){ started = true; tryLoad(0); }
+  };
+})();
+</script>
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
@@ -192,7 +235,9 @@
       + '</div></div>'
       + '<div class="tags">' + tagHtml + '</div>'
       + '<div style="margin-top:8px;display:flex;gap:10px;font-size:12px">'
-      + '<a href="javascript:;" class="ed" style="color:#1a6ee0">编辑</a><a href="javascript:;" class="del" style="color:#c23c3c">删除</a>'
+      + '<a href="javascript:;" class="ed" style="color:#1a6ee0">编辑</a>'
+      + (!x.lat || !x.lng ? '<a href="javascript:;" class="pin" style="color:#0b7a4b">📍 补坐标</a>' : '<a href="javascript:;" class="nav2" style="color:#7c8ca3">地图上看看</a>')
+      + '<a href="javascript:;" class="del" style="color:#c23c3c">删除</a>'
       + (x.img ? '<a href="javascript:;" class="big" style="color:#7c8ca3">看大图</a>' : '')
       + '</div></div>';
   }
@@ -205,8 +250,15 @@
   function renderNear(){
     var home = store().home;
     var withGeo = items().filter(function(x){ return x.lat && x.lng; });
-    if (!home){ $('nearbox').innerHTML = '<div class="mini">点「📍 以我为中心」定位后，这里会按距离列出附近的记录。</div>'; return; }
-    if (!withGeo.length){ $('nearbox').innerHTML = '<div class="mini">还没有带坐标的记录。</div>'; return; }
+    if (!withGeo.length){ $('nearbox').innerHTML = '<div class="mini">还没有带坐标的记录：在记录卡上点「📍 补坐标」，或录入时在地图上点一下。</div>'; return; }
+    if (!home){
+      $('nearbox').innerHTML = '<div class="mini">点「📍 以我为中心」定位后，这里按距离最近排序。</div>'
+        + withGeo.slice().sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); }).map(function(x){
+            return '<div class="nearrow" data-id="' + HUB.esc(x.id) + '"><div><div class="nm">' + HUB.esc(x.title||'未命名') + '</div>'
+              + '<div class="ad">' + HUB.esc(x.addr || '') + '</div></div><div class="d">—</div></div>';
+          }).join('');
+      return;
+    }
     var arr = withGeo.map(function(x){ return {x:x, d:dist(home,x)}; }).sort(function(a,b){ return a.d-b.d; });
     var groups = [[0,3000,'3 公里内'],[3000,10000,'3–10 公里'],[10000,1e9,'10 公里外']];
     var html = '';
@@ -235,10 +287,15 @@
 
   function renderMap(){
     if (typeof L === 'undefined'){
-      $('map').innerHTML = '<div class="empty">地图库没加载出来（网络被挡），切回文字模式仍可正常使用。</div>';
+      window.__loadLeaflet(function(ok){
+        if (ok){ MAP = null; renderMap(); }
+        else { $('map').innerHTML = '<div class="empty">地图库没加载出来（网络被挡），切回文字模式仍可正常使用。</div>'; }
+      });
       return;
     }
     var m = ensureMap();
+    var allN = items().length, geoN = items().filter(function(x){ return x.lat && x.lng; }).length;
+    if ($('geoStat')) $('geoStat').textContent = '已标记 ' + geoN + ' / ' + allN + ' 家' + (allN - geoN > 0 ? '（' + (allN - geoN) + ' 家缺坐标，点卡片上的「补坐标」）' : '');
     MARKERS.forEach(function(mk){ m.removeLayer(mk); });
     MARKERS = [];
     var pts = items().filter(function(x){ return x.lat && x.lng; });
@@ -297,6 +354,57 @@
       img.src = fr.result;
     };
     fr.readAsDataURL(file);
+  }
+
+  /* ---------- 快速补坐标 ---------- */
+  function quickPin(id){
+    var it = items().filter(function(x){ return x.id === id; })[0];
+    if (!it) return;
+    if (typeof L === 'undefined'){
+      HUB.toast('地图库还没加载好，稍等一秒再点');
+      window.__loadLeaflet(function(ok){ if (ok) quickPin(id); });
+      return;
+    }
+    var home = store().home;
+    var lat = it.lat || (home && home.lat) || 23.129;
+    var lng = it.lng || (home && home.lng) || 113.264;
+    var z = (it.lat ? 16 : (home && home.lat ? 15 : 12));
+    var m = document.createElement('div'); m.className = 'mask';
+    m.innerHTML = '<div class="dlg" style="max-width:560px">'
+      + '<h3>📍 给「' + HUB.esc(it.title||'这家') + '」标位置</h3>'
+      + '<p class="dlg-sub">在地图上点一下那家店的位置，坐标会自动保存并立刻出现在地图上</p>'
+      + (it.addr ? '<div class="mini" style="margin-bottom:6px">地址：' + HUB.esc(it.addr) + '</div>' : '')
+      + '<div class="pickmap" id="pinM"></div>'
+      + '<div class="mini" id="pinTxt">还没点</div>'
+      + '<div class="dlg-foot"><button class="btn gray" id="pinCancel">取消</button><button class="btn" id="pinSave" disabled>保存坐标</button></div>'
+      + '</div>';
+    document.body.appendChild(m);
+    var pk = L.map('pinM').setView([lat, lng], z);
+    L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', { subdomains:['1','2','3','4'], maxZoom:19 }).addTo(pk);
+    var mk = it.lat ? L.marker([it.lat, it.lng]).addTo(pk) : null;
+    var picked = it.lat ? { lat: it.lat, lng: it.lng } : null;
+    pk.on('click', function(e){
+      picked = { lat:+e.latlng.lat.toFixed(6), lng:+e.latlng.lng.toFixed(6) };
+      if (mk) pk.removeLayer(mk);
+      mk = L.marker([picked.lat, picked.lng]).addTo(pk);
+      $('pinTxt').textContent = '已选：' + picked.lat + ', ' + picked.lng;
+      $('pinSave').disabled = false;
+    });
+    setTimeout(function(){ pk.invalidateSize(); }, 60);
+    $('pinCancel').onclick = function(){ m.remove(); };
+    m.addEventListener('click', function(e){ if (e.target === m) m.remove(); });
+    $('pinSave').onclick = function(){
+      if (!picked) return;
+      var o = store();
+      o.items = o.items.map(function(x){
+        if (x.id !== id) return x;
+        var y = HUB.clone(x); y.lat = picked.lat; y.lng = picked.lng; y.updatedAt = HUB.nowStamp(); return y;
+      });
+      save(o); m.remove();
+      stat(); renderList();
+      if (MODE === 'map'){ renderMap(); } else { $('tgMode').querySelector('[data-m="map"]').click(); }
+      HUB.toast('坐标已存，已标到地图上');
+    };
   }
 
   /* ---------- 编辑 ---------- */
@@ -403,7 +511,14 @@
     Array.prototype.forEach.call(this.querySelectorAll('button'), function(x){ x.className = (x.dataset.m === MODE) ? 'on' : ''; });
     $('viewText').style.display = MODE === 'text' ? '' : 'none';
     $('viewMap').style.display = MODE === 'map' ? '' : 'none';
-    if (MODE === 'map') { renderMap(); } else { renderList(); }
+    if (MODE === 'map') {
+      $('map').innerHTML = '<div class="empty" style="padding:60px 20px">地图加载中…</div>';
+      window.__loadLeaflet(function(ok){
+        $('map').innerHTML = '';
+        if (!ok){ $('map').innerHTML = '<div class="empty">地图库三个源都被挡了，切回文字模式照常用。</div>'; renderNear(); return; }
+        MAP = null; renderMap();
+      });
+    } else { renderList(); }
   };
   $('q').oninput = function(){ Q = this.value.trim(); if (MODE === 'text') renderList(); };
   $('btnNew').onclick = function(){ openEditor(''); };
@@ -412,10 +527,15 @@
 
   function bindList(el){
     el.addEventListener('click', function(e){
-      var a = e.target.closest('.ed, .del, .big'); if (!a) return;
+      var a = e.target.closest('.ed, .del, .big, .pin, .nav2'); if (!a) return;
       var c = e.target.closest('.fcard'); if (!c) return;
       var id = c.dataset.id;
       if (a.classList.contains('ed')) openEditor(id);
+      else if (a.classList.contains('pin')) quickPin(id);
+      else if (a.classList.contains('nav2')){
+        var it2 = items().filter(function(x){ return x.id === id; })[0];
+        if (it2 && it2.lat && it2.lng) window.open('https://uri.amap.com/marker?position=' + it2.lng + ',' + it2.lat + '&name=' + encodeURIComponent(it2.title||'美食'), '_blank');
+      }
       else if (a.classList.contains('del')){
         if (!confirm('删除这条记录？')) return;
         var o = store(); o.items = o.items.filter(function(x){ return x.id !== id; }); save(o);
