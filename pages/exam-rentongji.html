@@ -285,14 +285,14 @@
       p.due = addDays(today(), LV[0]);
     }
     p.lv = lv; p.last = today();
-    p.hist.push({ d: today(), ok: ok ? 1 : 0, from: from, to: lv });
+    p.hist.push({ d: today(), ok: ok ? 1 : 0, from: from, to: lv, ans: (S.ans && S.ans[q.id]) || '' });
     save(); stats();
   }
 
   function judgeNow(q, ok, mock){
     if (mock){                                        // 模拟考不升降档
       var p = progOf(q.id); p.last = today();
-      p.hist.push({ d: today(), ok: ok ? 1 : 0, from: p.lv, to: p.lv, mock: 1 });
+      p.hist.push({ d: today(), ok: ok ? 1 : 0, from: p.lv, to: p.lv, mock: 1, ans: (S.ans && S.ans[q.id]) || '' });
       save();
       return;
     }
@@ -347,7 +347,7 @@
         + '<textarea class="note" id="noteBox">' + esc(D.notes[q.id] || '') + '</textarea>'
         + (p ? ('<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '　已毕业') +
             (p.hist && p.hist.length ? ('<ul class="hist">' + p.hist.slice(-5).map(function(h){
-              return '<li>' + h.d + ' ' + (h.ok ? '对' : '错') + '　' + lvName(h.from) + ' → ' + lvName(h.to) + (h.mock ? '（模拟）' : '') + '</li>';
+              return '<li>' + h.d + ' ' + (h.ok ? '对' : '错') + (h.ans ? ('　选了 ' + esc(h.ans)) : '') + '　' + lvName(h.from) + ' → ' + lvName(h.to) + (h.mock ? '（模拟）' : '') + '</li>';
             }).join('') + '</ul>') : '') + '</div>') : '');
     } else {
       extra = '<div class="meta">考试状态：只显示题干和选项，交卷才判。</div>';
@@ -459,8 +459,8 @@
   function countHist(p){
     var w = 0, c = 0, wd = [], cd = [];
     (p.hist || []).forEach(function(h){
-      if (h.ok === 1){ c++; cd.push(h.d); }
-      else if (h.ok === 0){ w++; wd.push(h.d + (h.mock ? '（模拟）' : '')); }
+      if (h.ok === 1){ c++; cd.push({ d:h.d, ans:h.ans || '' }); }
+      else if (h.ok === 0){ w++; wd.push({ d:h.d + (h.mock ? '（模拟）' : ''), ans:h.ans || '' }); }
     });
     return { w:w, c:c, wd:wd, cd:cd };
   }
@@ -477,7 +477,7 @@
       lvA[Math.min(p.lv || 0, GRAD)]++;
     });
     rightList.sort(function(a,b){ return String(b.p.last || '').localeCompare(String(a.p.last || '')); });
-    wrongList.sort(function(a,b){ return b.h.w - a.h.w || String(b.h.wd[b.h.wd.length-1] || '').localeCompare(String(a.h.wd[a.h.wd.length-1] || '')); });
+    wrongList.sort(function(a,b){ return b.h.w - a.h.w || String((b.h.wd[b.h.wd.length-1]||{}).d || '').localeCompare(String((a.h.wd[a.h.wd.length-1]||{}).d || '')); });
 
     var html = '<div class="q" style="padding:12px"><div class="stem" style="font-size:15px"><b>练过 · 全部存档</b>'
       + '<span class="dv">' + list.length + ' 题</span></div>'
@@ -499,8 +499,8 @@
         body += '<div class="ansline">标准答案：<b>' + esc(ansText(q)) + '</b></div>';
         if (q.exp) body += '<div class="expl">解析：' + esc(q.exp) + '</div>';
       }
-      body += '<div class="wline"><span class="wt bad">错</span>' + (h.wd.length ? h.wd.map(function(d){ return '<span class="wd">' + esc(String(d)) + '</span>'; }).join('') : '<span class="wd">没有</span>') + '</div>'
-        + '<div class="wline"><span class="wt ok">对</span>' + (h.cd.length ? h.cd.map(function(d){ return '<span class="wd">' + esc(d) + '</span>'; }).join('') : '<span class="wd">没有</span>') + '</div>';
+      body += '<div class="wline"><span class="wt bad">错</span>' + (h.wd.length ? h.wd.map(function(x){ return '<span class="wd">' + esc(String(x.d)) + (x.ans ? (' <b style="color:#c0392b;font-weight:600">' + esc(x.ans) + '</b>') : '') + '</span>'; }).join('') : '<span class="wd">没有</span>') + '</div>'
+        + '<div class="wline"><span class="wt ok">对</span>' + (h.cd.length ? h.cd.map(function(x){ return '<span class="wd">' + esc(String(x.d)) + (x.ans ? (' <b style="color:#0b7a4b;font-weight:600">' + esc(x.ans) + '</b>') : '') + '</span>'; }).join('') : '<span class="wd">没有</span>') + '</div>';
       if (STATE === 'study'){
         body += '<div style="font-size:11.5px;color:#93a1b4;margin-top:8px">备注<span class="svd" id="svd_' + q.id + '"></span></div>'
           + '<textarea class="note2" data-q="' + q.id + '" placeholder="随便写，输入即保存">' + esc(D.notes[q.id] || '') + '</textarea>';
