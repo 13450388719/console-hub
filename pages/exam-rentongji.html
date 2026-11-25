@@ -75,6 +75,13 @@
 .kp.open .body2{display:block}
 .kp .yy{font-size:11.5px;color:#93a1b4;margin:8px 0 3px}
 .kp .qi{font-size:12.5px;color:#3c5171;line-height:1.5;padding:4px 0 4px 8px;border-left:2px solid #e6ecf5;margin-bottom:4px}
+.rv{background:#fff;border:1px solid #e6ecf5;border-radius:10px;margin:7px 0;padding:8px 12px}
+.rv>summary{cursor:pointer;font-size:13px;color:#22354f;line-height:1.5;list-style:none}
+.rv>summary::-webkit-details-marker{display:none}
+.rv>summary:before{content:"▸ ";color:#93a1b4}
+.rv[open]>summary:before{content:"▾ "}
+.rv[open]{padding-bottom:12px}
+.rv .stem{font-size:14px;line-height:1.6;color:#1e2f47;margin:8px 0 6px;font-weight:500}
 </style>
 </head>
 <body>
@@ -302,7 +309,7 @@
     if (S.mode === 'kp'){ st.innerHTML = renderKp(); bindKp(); return; }
     if (S.mode === 'done'){ st.innerHTML = renderDone(); bindKp(); bindNotes(); return; }
     if (S.mode === 'idle'){ return; }
-    if (S.result){ st.innerHTML = renderResult(); bindResult(); return; }
+    if (S.result){ st.innerHTML = renderResult(); bindResult(); bindNotes(); return; }
     st.innerHTML = renderQuestion();
     bindQuestion();
   }
@@ -605,10 +612,37 @@
         '<div class="res bad">正确答案：' + esc(q.ans || '（缺）') + (myAns ? ('　你选：' + esc(myAns)) : '') + '</div>' +
         (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '') + '</div>' : '') + '</div>';
     }).join('');
+    /* 对答案时逐题打开学习视图：题干 / 全部选项 / 标准答案 / 解析 / 备注（输入即存） */
+    var rvList = S.qs.map(function(q, i){
+      var judged = S.judged[q.id], ok = judged ? judged.ok : null;
+      var myAns = S.ans[q.id] || '';
+      var p = D.prog[q.id];
+      var opts = (q.opts || []).map(function(o){
+        var L = (o.match(/^([A-D])/) || [])[1] || '';
+        var isOk = q.ans && L && q.ans.indexOf(L) >= 0;
+        var isMine = L && myAns.indexOf(L) >= 0;
+        return '<div class="ro' + (isOk ? ' ok' : '') + (isMine ? ' mine' : '') + '">' + esc(o)
+          + (isOk ? ' ✓' : '') + (isMine && !isOk ? ' ← 你选的' : '') + '</div>';
+      }).join('');
+      var mark = ok === true ? '✅' : (ok === false ? '❌' : '·');
+      var head = (q.q || '').replace(/[\n<]/g, ' ');
+      head = head.length > 30 ? head.slice(0, 30) + '…' : head;
+      return '<details class="rv"><summary>' + mark + ' 第 ' + (i + 1) + ' 题 · ' + esc(q.paper || '') + ' · ' + esc(head) + '</summary>'
+        + '<div class="stem">' + esc(q.q) + '</div>' + opts
+        + '<div class="res ' + (ok === false ? 'bad' : (ok === true ? 'ok' : 'nd')) + '">标准答案：<b>' + esc(q.ans || '（缺）') + '</b>'
+        + (myAns ? ('　你选：' + esc(myAns)) : '　未作答') + '</div>'
+        + (q.exp ? '<div class="expl">解析：' + esc(q.exp) + '</div>' : '')
+        + '<div style="font-size:11.5px;color:#93a1b4;margin:8px 0 4px">备注<span class="svd" id="svd_' + q.id + '"></span></div>'
+        + '<textarea class="note2" data-q="' + q.id + '" placeholder="随便写，输入即保存">' + esc(D.notes[q.id] || '') + '</textarea>'
+        + (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '　已毕业') + '</div>' : '')
+        + '</details>';
+    }).join('');
     return '<div class="q"><div class="stem" style="font-size:16px"><b>本组结束</b></div>'
       + '<div class="meta">共 ' + r.total + ' 题 · 已判 ' + r.answered + ' 题 · 答对 ' + r.right
       + (r.unknown ? ('　缺答案待自评 ' + r.unknown + ' 题') : '') + '</div></div>'
       + (r.wrong.length ? ('<div style="font-size:12px;color:#93a1b4;margin:16px 0 4px">错题（已回 1 天档，明天到期）</div>' + wrongList) : '')
+      + '<div style="font-size:12px;color:#93a1b4;margin:18px 0 4px">本组 ' + r.total + ' 题 · 点开逐题对答案（学习视图：题干 / 全部选项 / 答案 / 解析 / 备注自动保存）</div>'
+      + rvList
       + '<div class="nav" style="margin-top:16px"><button class="btn pri" id="btnAgain">再来一组</button>'
       + '<button class="btn" id="btnIdle">回到首页</button></div>';
   }
