@@ -385,7 +385,7 @@ window.HUB = (function () {
 
   /* ---------------- 云端自动备份（Supabase 两行：bak_memo / bak_auto） ---------------- */
   var BAK_MEMO = 'bak_memo', BAK_AUTO = 'bak_auto';
-  var MEMO_KEEP_MS = 3 * 24 * 3600 * 1000, MEMO_SLOTS = 90, AUTO_SLOTS = 7;
+  var MEMO_SLOTS = 99, AUTO_SLOTS = 30;
 
   function rowGet(id){
     if (cfg.mode !== 'supabase' || !cfg.url) return Promise.resolve(null);
@@ -412,17 +412,16 @@ window.HUB = (function () {
     return data;
   }
 
-  /* 备忘：有修改就备，同一小时最多一份，保留 3 天 */
+  /* 备忘：有修改就备，同一小时最多一份，保留 99 份（满了从最旧开始覆盖） */
   function backupMemoRing(){
     if (cfg.mode !== 'supabase' || !cfg.url) return Promise.reject(new Error('还没开启 Supabase 同步'));
     return rowGet(BAK_MEMO).catch(function(){ return null; }).then(function(p){
-      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'memo', keepDays:3, items:[] };
+      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'memo', keepDays:99, items:[] };
       var now = Date.now(), hour = nowStamp().slice(0,13);
       ring.items = (ring.items || []).filter(function(x){
         if (!x || !x.at) return false;
         var t = Date.parse(x.at);
         if (isNaN(t)) return false;
-        if (now - t > MEMO_KEEP_MS) return false;   /* 超过 3 天丢掉 */
         return x.hour !== hour;                     /* 同一小时只留一份 */
       });
       ring.items.push({ at:new Date().toISOString(), hour:hour, label:nowStamp(), data:dataOf(['memos']) });
@@ -432,11 +431,11 @@ window.HUB = (function () {
     });
   }
 
-  /* 其他数据：每天一份，保留 7 天 */
+  /* 其他数据：每天一份，滚动保留最近 30 份 */
   function backupDailyRing(){
     if (cfg.mode !== 'supabase' || !cfg.url) return Promise.reject(new Error('还没开启 Supabase 同步'));
     return rowGet(BAK_AUTO).catch(function(){ return null; }).then(function(p){
-      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'auto', keepDays:7, items:[] };
+      var ring = (p && Array.isArray(p.items)) ? p : { schema:1, kind:'auto', keepDays:30, items:[] };
       var day = todayStr();
       var keys = KEYS.filter(function(k){ return k !== 'memos'; });
       ring.items = (ring.items || []).filter(function(x){ return x && x.day && x.day !== day; });
