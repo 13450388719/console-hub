@@ -524,9 +524,10 @@
         D.notes[id] = el.value;
         clearTimeout(el._t);
         el._t = setTimeout(function(){ save(); }, 300);
-        var tip = document.getElementById('svd_' + id);
+        var tip = (el.previousElementSibling && el.previousElementSibling.querySelector) ? el.previousElementSibling.querySelector('.svd') : null;
         if (tip){ tip.textContent = '已保存'; setTimeout(function(){ if (tip) tip.textContent = ''; }, 1200); }
       };
+      el.onblur = function(){ D.notes[el.getAttribute('data-q')] = el.value; save(); };
     });
   }
 
@@ -610,6 +611,9 @@
       return '<div class="q"><span class="tag">' + esc(q.paper || '') + '</span><div class="stem">' + esc(q.q) + '</div>' +
         opts +
         '<div class="res bad">正确答案：' + esc(q.ans || '（缺）') + (myAns ? ('　你选：' + esc(myAns)) : '') + '</div>' +
+        (q.exp ? '<div class="expl">解析：' + esc(q.exp) + '</div>' : '') +
+        '<div style="font-size:11.5px;color:#93a1b4;margin:8px 0 4px">备注<span class="svd"></span></div>' +
+        '<textarea class="note2" data-q="' + q.id + '" placeholder="这题记住什么，输入即保存">' + esc(D.notes[q.id] || '') + '</textarea>' +
         (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '') + '</div>' : '') + '</div>';
     }).join('');
     /* 对答案时逐题打开学习视图：题干 / 全部选项 / 标准答案 / 解析 / 备注（输入即存） */
@@ -632,7 +636,7 @@
         + '<div class="res ' + (ok === false ? 'bad' : (ok === true ? 'ok' : 'nd')) + '">标准答案：<b>' + esc(q.ans || '（缺）') + '</b>'
         + (myAns ? ('　你选：' + esc(myAns)) : '　未作答') + '</div>'
         + (q.exp ? '<div class="expl">解析：' + esc(q.exp) + '</div>' : '')
-        + '<div style="font-size:11.5px;color:#93a1b4;margin:8px 0 4px">备注<span class="svd" id="svd_' + q.id + '"></span></div>'
+        + '<div style="font-size:11.5px;color:#93a1b4;margin:8px 0 4px">备注<span class="svd"></span></div>'
         + '<textarea class="note2" data-q="' + q.id + '" placeholder="随便写，输入即保存">' + esc(D.notes[q.id] || '') + '</textarea>'
         + (p ? '<div class="meta">当前：' + lvName(p.lv) + (p.due ? ('　下次：' + p.due) : '　已毕业') + '</div>' : '')
         + '</details>';
