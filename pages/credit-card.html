@@ -65,9 +65,9 @@ th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
     <div class="panel" style="margin-top:12px">
       <div class="panel-title"><span>③ 还款记录（账单台账）</span><span class="grow"></span>
         <button class="btn sm" id="btnAddRepay">＋ 登记一笔</button></div>
-      <div class="table-wrap"><table class="data min" id="tblRepay">
-        <colgroup><col style="width:16%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:18%"><col style="width:9%"><col style="width:13%"></colgroup>
-        <thead><tr><th>日期</th><th>银行</th><th>还款金额</th><th>方式</th><th>备注</th><th>截图</th><th>操作</th></tr></thead>
+      <div class="table-wrap"><table class="data" id="tblRepay" style="min-width:0">
+        <colgroup><col style="width:24%"><col style="width:38%"><col style="width:22%"><col style="width:16%"></colgroup>
+        <thead><tr><th>日期</th><th>银行 · 方式 · 备注</th><th class="num">还款金额</th><th>截图 / 操作</th></tr></thead>
         <tbody></tbody>
       </table></div>
       <div class="empty" id="repayEmpty" hidden>还没有还款记录。刷卡套现、还账之后点上面「登记一笔」记下来，年底对流水很方便。</div>
@@ -641,11 +641,14 @@ th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
     $('repayEmpty').hidden = !!l.length;
     if (!l.length){ tb.innerHTML = ''; return; }
     tb.innerHTML = l.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); }).map(function(r){
-      return '<tr><td>' + HUB.esc(r.date||'') + '</td><td>' + HUB.esc(r.bank||'') + '</td>'
-        + '<td class="num">' + money(r.amount) + '</td><td>' + HUB.esc(r.way||'—') + '</td>'
-        + '<td>' + HUB.esc(r.note||'—') + '</td>'
-        + '<td>' + (r.img ? '<img src="' + r.img + '" style="max-width:56px;border-radius:5px;cursor:pointer" data-img="' + r.id + '">' : '—') + '</td>'
-        + '<td><a data-delrep="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:12.5px">删除</a></td></tr>';
+      var sub = [r.way||'', r.note||''].filter(function(x){ return x; }).join(' · ');
+      return '<tr><td>' + HUB.esc(r.date||'') + '</td>'
+        + '<td>' + HUB.esc(r.bank||'')
+        + (sub ? '<div style="font-size:11.5px;color:#93a1b4;margin-top:3px;line-height:1.45">' + HUB.esc(sub) + '</div>' : '')
+        + '</td>'
+        + '<td class="num">' + money(r.amount) + '</td>'
+        + '<td>' + (r.img ? '<img src="' + r.img + '" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:pointer;vertical-align:middle" data-img="' + r.id + '">' : '')
+        + ' <a data-delrep="' + r.id + '" style="color:#c0392b;cursor:pointer;font-size:11.5px;vertical-align:middle">删除</a></td></tr>';
     }).join('');
     Array.prototype.forEach.call(tb.querySelectorAll('[data-delrep]'), function(el){
       el.onclick = function(){
