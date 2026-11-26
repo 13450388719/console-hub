@@ -62,6 +62,16 @@ th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
       </table></div>
       <div class="hint">状态判定：还款日当天 23:59 前正常；过了还款日进入宽限期（浅红底）；过宽限期截止为逾期（深红底）。宽限期截止 = 还款日 + 宽限天数，时刻取「宽限时点」。</div>
     </div>
+    <div class="panel" style="margin-top:12px">
+      <div class="panel-title"><span>③ 还款记录（账单台账）</span><span class="grow"></span>
+        <button class="btn sm" id="btnAddRepay">＋ 登记一笔</button></div>
+      <div class="table-wrap"><table class="data min" id="tblRepay">
+        <colgroup><col style="width:16%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:18%"><col style="width:9%"><col style="width:13%"></colgroup>
+        <thead><tr><th>日期</th><th>银行</th><th>还款金额</th><th>方式</th><th>备注</th><th>截图</th><th>操作</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="empty" id="repayEmpty" hidden>还没有还款记录。刷卡套现、还账之后点上面「登记一笔」记下来，年底对流水很方便。</div>
+    </div>
 
   </div>
 
@@ -118,17 +128,6 @@ th[data-sort] .ar{color:#1a6ee0;font-size:10px;margin-left:1px}
         <tbody></tbody>
       </table></div>
       <div class="hint">点表头可排序（再点一次切升/降）；表面月费率 = 每期利息 ÷ 本金（就是业务员报的那个数）；年化 = 用现金流 IRR 反推的真实成本 × 12（单利近似，不是复利年化）。</div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title"><span>③ 还款记录（账单台账）</span><span class="grow"></span>
-        <button class="btn sm" id="btnAddRepay">＋ 登记一笔</button></div>
-      <div class="table-wrap"><table class="data min" id="tblRepay">
-        <colgroup><col style="width:16%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:18%"><col style="width:9%"><col style="width:13%"></colgroup>
-        <thead><tr><th>日期</th><th>银行</th><th>还款金额</th><th>方式</th><th>备注</th><th>截图</th><th>操作</th></tr></thead>
-        <tbody></tbody>
-      </table></div>
-      <div class="empty" id="repayEmpty" hidden>还没有还款记录。刷卡套现、还账之后点上面「登记一笔」记下来，年底对流水很方便。</div>
     </div>
   </div>
 
