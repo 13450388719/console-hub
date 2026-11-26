@@ -175,13 +175,26 @@ window.HUB = (function () {
       /* 本机有还没推上去的改动时，不能被一次拉取悄悄盖掉（这是之前账单被回滚的根因） */
       if (DIRTY[k] && !opts.force) return;
       var rt = Number(rec.t)||0, lt = Number(META[k])||0;
+      var vv = rec.v, cur = null;
+      try { cur = JSON.parse(rawGet(LS+k) || 'null'); } catch(e){ cur = null; }
+      /* 删除墓碑：本机删过的 id 记在 v.del 里，云端数据即便还带着这条也一律滤掉，
+         否则「云端条数多」的兜底会把删掉的商品拉回来 */
+      if (k === 'shopping' && vv && typeof vv === 'object' && Array.isArray(vv.items)){
+        var del = [];
+        [ (vv.del||[]), (cur && cur.del) || [] ].forEach(function(a){
+          for (var i=0;i<a.length;i++) if (del.indexOf(a[i]) < 0) del.push(a[i]);
+        });
+        if (del.length){
+          vv.del = del;
+          vv.items = vv.items.filter(function(x){ return !x || del.indexOf(x.id) < 0; });
+        }
+      }
       var take = (opts.force || rt > lt + 500);
-      /* 兜底：云端条数多于本机（本机曾被空数据/旧数据占住），即使时间戳不新也采纳云端 */
-      if (!take && rec.v && Array.isArray(rec.v.items)){
-        var cur = null;
-        try { cur = JSON.parse(rawGet(LS+k) || 'null'); } catch(e){ cur = null; }
-        var cn = (cur && Array.isArray(cur.items)) ? cur.items.length : -1;
-        if (rec.v.items.length > cn) take = true;
+      /* 兜底：只有本机这条 key 是空的（从没写过 / 被清掉）才无条件采纳云端。
+         以前这里写「云端条数 > 本机条数就采纳」，会导致删掉一条后又被拉回来 */
+      if (!take && vv && Array.isArray(vv.items)){
+        var cn = (cur && Array.isArray(cur.items)) ? cur.items.length : 0;
+        if (cn === 0 && vv.items.length > 0) take = true;
       }
       if (take) {
         PRECOMPUTED[k] = { v: rec.v };
