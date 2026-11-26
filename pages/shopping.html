@@ -59,7 +59,7 @@ th .pf{font-size:11px;color:#93a1b4;font-weight:400;display:block}
 </div>
 
 <script src="../data/seed.js?v=20261116h"></script>
-<script src="../shared/hub.js?v=20261125c"></script>
+<script src="../shared/hub.js?v=20261126a"></script>
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
@@ -69,7 +69,16 @@ th .pf{font-size:11px;color:#93a1b4;font-weight:400;display:block}
 
   function data(){ return HUB.get('shopping', {items:[], sort:{key:'created',dir:'desc'}}) || {items:[]}; }
   function items(){ return data().items || []; }
-  function save(l, meta){ var d = data(); d.items = l; d.updatedAt = HUB.nowStamp(); HUB.set('shopping', d); }
+  function save(l, meta){
+    var d = data(); d.items = l; d.updatedAt = HUB.nowStamp();
+    if (meta && meta.del && meta.del.length){
+      var del = (d.del || []).slice();
+      meta.del.forEach(function(id){ if (del.indexOf(id) < 0) del.push(id); });
+      d.del = del;
+    }
+    HUB.set('shopping', d);
+    if (meta && meta.del && HUB.cloudOn && HUB.cloudOn()) { try{ HUB.pushNow(); }catch(e){} }
+  }
 
   function bestOf(it){
     var best = null, pf = null;
@@ -132,7 +141,7 @@ th .pf{font-size:11px;color:#93a1b4;font-weight:400;display:block}
     Array.prototype.forEach.call(tb.querySelectorAll('[data-del]'), function(el){
       el.onclick = function(){
         if (!confirm('删除这个商品？')) return;
-        save(items().filter(function(x){ return x.id !== el.dataset.del; })); render();
+        save(items().filter(function(x){ return x.id !== el.dataset.del; }), { del:[el.dataset.del] }); render();
       };
     });
     Array.prototype.forEach.call(tb.querySelectorAll('[data-img]'), function(el){
