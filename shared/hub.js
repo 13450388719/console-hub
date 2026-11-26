@@ -175,7 +175,15 @@ window.HUB = (function () {
       /* 本机有还没推上去的改动时，不能被一次拉取悄悄盖掉（这是之前账单被回滚的根因） */
       if (DIRTY[k] && !opts.force) return;
       var rt = Number(rec.t)||0, lt = Number(META[k])||0;
-      if (opts.force || rt > lt + 500) {
+      var take = (opts.force || rt > lt + 500);
+      /* 兜底：云端条数多于本机（本机曾被空数据/旧数据占住），即使时间戳不新也采纳云端 */
+      if (!take && rec.v && Array.isArray(rec.v.items)){
+        var cur = null;
+        try { cur = JSON.parse(rawGet(LS+k) || 'null'); } catch(e){ cur = null; }
+        var cn = (cur && Array.isArray(cur.items)) ? cur.items.length : -1;
+        if (rec.v.items.length > cn) take = true;
+      }
+      if (take) {
         PRECOMPUTED[k] = { v: rec.v };
         rawSet(LS+k, JSON.stringify(rec.v));
         META[k] = rt;
